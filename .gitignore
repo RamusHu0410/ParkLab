@@ -229,3 +229,4 @@ node_modules/
 # See README.md "Assets" for how to restore them locally.
 /Assets/
 /public/models/
+.vercel
