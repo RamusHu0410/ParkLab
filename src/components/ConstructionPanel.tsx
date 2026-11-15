@@ -71,19 +71,13 @@ export function ConstructionPanel() {
         ? 'Drag to paint. Enter confirms, Esc cancels.'
         : 'Click to add corners; click the first corner or double-click to finish. Enter confirms, Esc cancels.'
       : HINTS[e.mode]
+  // Brush preview dot grows with the radius but stays within the row height.
+  const brushSample = Math.round(8 + ((e.brushRadius - BRUSH_RADIUS_RANGE.min) / (BRUSH_RADIUS_RANGE.max - BRUSH_RADIUS_RANGE.min)) * 18)
 
   return (
     <div className="build-dock">
       <div className="build-dock__bar">
         <h2 className="build-dock__title">Construction</h2>
-        <div className="build-dock__tabs" role="tablist">
-          {MODES.map((m) => (
-            <button key={m.mode} role="tab" aria-selected={e.mode === m.mode} className={e.mode === m.mode ? 'is-active' : ''} onClick={() => e.setMode(m.mode)}>
-              <ModeIcon mode={m.mode} />
-              {m.label}
-            </button>
-          ))}
-        </div>
         <div className="build-dock__funds" title={`Starting funds ${money(LEVEL.startingFunds)}`}>
           <span className="build-dock__coin">$</span>
           <div>
@@ -93,41 +87,67 @@ export function ConstructionPanel() {
             </div>
           </div>
         </div>
-        <button onClick={e.undo} disabled={!canUndo} title="Undo (Ctrl/⌘+Z)">
-          ↶ Undo
+        <button onClick={e.undo} disabled={!canUndo} title="Undo (Ctrl/⌘+Z)" aria-label="Undo">
+          ↶ <span className="build-dock__undo-label">Undo</span>
         </button>
-        <button onClick={e.redo} disabled={!canRedo} title="Redo (Ctrl/⌘+Shift+Z)">
-          ↷ Redo
+        <button onClick={e.redo} disabled={!canRedo} title="Redo (Ctrl/⌘+Shift+Z)" aria-label="Redo">
+          ↷ <span className="build-dock__undo-label">Redo</span>
         </button>
         <button className="build-dock__close" onClick={() => e.setPanelOpen(false)} title="Close the build panel" aria-label="Close">
           ✕
         </button>
       </div>
+      <div className="build-dock__tabs" role="tablist">
+        {MODES.map((m) => (
+          <button key={m.mode} role="tab" aria-selected={e.mode === m.mode} className={e.mode === m.mode ? 'is-active' : ''} onClick={() => e.setMode(m.mode)}>
+            <ModeIcon mode={m.mode} />
+            <span>{m.label}</span>
+          </button>
+        ))}
+      </div>
 
       <div className="build-dock__body">
-        <div className="build-dock__tools">
+        {e.mode === 'path' && (
+          <Cards<PathType>
+            value={e.pathType}
+            onChange={(pathType) => e.set({ pathType })}
+            items={entries(PATH_TYPES).map(([k, t]) => [k, <PathIcon type={k} />, t.label, `${money(LEVEL.costs.path[k].perSquareMetre)}/m²`])}
+          />
+        )}
+        {e.mode === 'area' && (
+          <Cards<AreaType>
+            value={e.areaType}
+            onChange={(areaType) => e.set({ areaType })}
+            items={entries(AREA_TYPES).map(([k, t]) => [k, <AreaIcon type={k} />, t.label, `${money(LEVEL.costs.area[k].perSquareMetre)}/m²`])}
+          />
+        )}
+        {e.mode === 'facility' && (
+          <Cards<FacilityType>
+            value={e.facilityType}
+            onChange={(facilityType) => (e.cancel(), e.set({ facilityType }))}
+            items={entries(FACILITY_TYPES).map(([k, t]) => [k, <FacilityIcon type={k} />, t.label, `${money(LEVEL.costs.facility[k].flat)} · ${t.length}×${t.width} m`])}
+          />
+        )}
+        {e.mode === 'browse' && (
+          <div className="build-dock__stats">
+            <Stat icon={<PathIcon type="walking_trail" />} value={`${sum(stats.pathM2).toLocaleString()} m²`} label="paths" />
+            <Stat icon={<AreaIcon type="woodland" />} value={`${sum(stats.areaM2).toLocaleString()} m²`} label="planted" />
+            <Stat icon={<FacilityIcon type="playground" />} value={String(sum(stats.facilities))} label="facilities built" />
+            <Stat icon={<AreaIcon type="flower_garden" />} value={stats.items.toLocaleString()} label="objects in the park" />
+            <Stat icon={<ModeIcon mode="facility" />} value={String(blocks.length)} label="blocks built" />
+          </div>
+        )}
+        <div className="build-dock__row">
           {e.mode === 'path' && (
-            <>
-              <Cards<PathType>
-                value={e.pathType}
-                onChange={(pathType) => e.set({ pathType })}
-                items={entries(PATH_TYPES).map(([k, t]) => [k, <PathIcon type={k} />, t.label, `${money(LEVEL.costs.path[k].perSquareMetre)}/m²`])}
-              />
-              <label className="build-dock__slider">
-                <span>Width</span>
-                <input type="range" min={PATH_WIDTH_RANGE.min} max={PATH_WIDTH_RANGE.max} step={PATH_WIDTH_RANGE.step} value={e.pathWidth} onChange={(ev) => e.set({ pathWidth: Number(ev.target.value) })} />
-                <span className="build-dock__width-sample" style={{ height: e.pathWidth * 3, background: PATH_TYPES[e.pathType].color, borderColor: PATH_TYPES[e.pathType].edge }} />
-                <strong>{e.pathWidth} m</strong>
-              </label>
-            </>
+            <label className="build-dock__slider">
+              <span>Width</span>
+              <input type="range" min={PATH_WIDTH_RANGE.min} max={PATH_WIDTH_RANGE.max} step={PATH_WIDTH_RANGE.step} value={e.pathWidth} onChange={(ev) => e.set({ pathWidth: Number(ev.target.value) })} />
+              <span className="build-dock__width-sample" style={{ height: e.pathWidth * 3, background: PATH_TYPES[e.pathType].color, borderColor: PATH_TYPES[e.pathType].edge }} />
+              <strong>{e.pathWidth} m</strong>
+            </label>
           )}
           {e.mode === 'area' && (
             <>
-              <Cards<AreaType>
-                value={e.areaType}
-                onChange={(areaType) => e.set({ areaType })}
-                items={entries(AREA_TYPES).map(([k, t]) => [k, <AreaIcon type={k} />, t.label, `${money(LEVEL.costs.area[k].perSquareMetre)}/m²`])}
-              />
               <div className="build-dock__toggle">
                 <button className={e.areaTool === 'brush' ? 'is-active' : ''} onClick={() => (e.cancel(), e.set({ areaTool: 'brush' }))}>
                   🖌 Brush
@@ -138,40 +158,36 @@ export function ConstructionPanel() {
               </div>
               {e.areaTool === 'brush' && (
                 <label className="build-dock__slider">
-                  <span>Brush</span>
+                  <span className="build-dock__sr">Brush size</span>
                   <input type="range" min={BRUSH_RADIUS_RANGE.min} max={BRUSH_RADIUS_RANGE.max} step={BRUSH_RADIUS_RANGE.step} value={e.brushRadius} onChange={(ev) => e.set({ brushRadius: Number(ev.target.value) })} />
-                  <span className="build-dock__brush-sample" style={{ width: e.brushRadius * 2 + 4, height: e.brushRadius * 2 + 4, background: AREA_TYPES[e.areaType].color }} />
+                  <span className="build-dock__brush-sample" style={{ width: brushSample, height: brushSample, background: AREA_TYPES[e.areaType].color }} />
                   <strong>{e.brushRadius} m</strong>
                 </label>
               )}
             </>
           )}
           {e.mode === 'facility' && (
-            <>
-              <Cards<FacilityType>
-                value={e.facilityType}
-                onChange={(facilityType) => (e.cancel(), e.set({ facilityType }))}
-                items={entries(FACILITY_TYPES).map(([k, t]) => [k, <FacilityIcon type={k} />, t.label, `${money(LEVEL.costs.facility[k].flat)} · ${t.length}×${t.width} m`])}
-              />
-              <div className="build-dock__toggle">
-                <button onClick={() => e.set({ facilityAngle: e.facilityAngle - Math.PI / 12 })}>⟲ Rotate</button>
-                <span className="build-dock__compass" style={{ transform: `rotate(${(e.facilityAngle * 180) / Math.PI}deg)` }} />
-                <button onClick={() => e.set({ facilityAngle: e.facilityAngle + Math.PI / 12 })}>Rotate ⟳</button>
-              </div>
-            </>
-          )}
-          {e.mode === 'browse' && (
-            <div className="build-dock__stats">
-              <Stat icon={<PathIcon type="walking_trail" />} value={`${sum(stats.pathM2).toLocaleString()} m²`} label="paths" />
-              <Stat icon={<AreaIcon type="woodland" />} value={`${sum(stats.areaM2).toLocaleString()} m²`} label="planted" />
-              <Stat icon={<FacilityIcon type="playground" />} value={String(sum(stats.facilities))} label="facilities built" />
-              <Stat icon={<AreaIcon type="flower_garden" />} value={stats.items.toLocaleString()} label="objects in the park" />
-              <Stat icon={<ModeIcon mode="facility" />} value={String(blocks.length)} label="blocks built" />
+            <div className="build-dock__toggle">
+              <button onClick={() => e.set({ facilityAngle: e.facilityAngle - Math.PI / 12 })} title="Rotate left (Shift+R)">
+                ⟲
+              </button>
+              <span className="build-dock__compass" style={{ transform: `rotate(${(e.facilityAngle * 180) / Math.PI}deg)` }} />
+              <button onClick={() => e.set({ facilityAngle: e.facilityAngle + Math.PI / 12 })} title="Rotate right (R)">
+                ⟳
+              </button>
             </div>
           )}
-          <small className="build-dock__hint">{hint}</small>
+          {e.message && !target && !(plan && e.draft) ? (
+            <small className={`build-dock__hint ${e.message.tone === 'error' ? 'build-dock__error' : 'build-dock__ok'}`} role="status">
+              {e.message.text}
+            </small>
+          ) : (
+            <small className="build-dock__hint">{hint}</small>
+          )}
         </div>
+      </div>
 
+      {(target || (plan && e.draft)) && (
         <div className="build-dock__preview">
           {target ? (
             <div className="build-dock__card is-remove">
@@ -224,12 +240,10 @@ export function ConstructionPanel() {
                 {e.fixed && <ConfirmButtons ok={plan.ok} onConfirm={e.confirm} onCancel={e.cancel} confirmLabel={`Build${plan.violations.length ? ' anyway' : ''} for ${money(plan.cost)}`} />}
               </div>
             </div>
-          ) : (
-            e.message && <div className={e.message.tone === 'error' ? 'build-dock__error' : 'build-dock__ok'}>{e.message.text}</div>
-          )}
-          {(target || (plan && e.draft)) && e.message?.tone === 'error' && <div className="build-dock__error">{e.message.text}</div>}
+          ) : null}
+          {e.message?.tone === 'error' && <div className="build-dock__error">{e.message.text}</div>}
         </div>
-      </div>
+      )}
     </div>
   )
 }

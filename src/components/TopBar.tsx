@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
 import { AREA_TYPES, FACILITY_TYPES, PATH_TYPES } from '../construction/blocks'
-import { auditPark, type Ending, rateDesign, type RuleCheck } from '../construction/compliance'
+import { auditPark, type Ending, ENVIRONMENT, environmentScore, rateDesign, type RuleCheck } from '../construction/compliance'
 import { LEVEL } from '../construction/level'
+import { sourcesHref } from '../construction/sources'
 import { useCitizenStore } from '../store/citizenStore'
 import { getConstructionGrid, useParkStore } from '../store/parkStore'
 
@@ -28,14 +29,18 @@ const ENDINGS: Record<Ending, { title: string; text: string }> = {
 
 /** Title on the left, Finalize on the right. Finalizing opens the design summary and rating. */
 export function TopBar() {
-  const [report, setReport] = useState<{ checks: RuleCheck[]; happiness: number } | null>(null)
+  const [report, setReport] = useState<{ checks: RuleCheck[]; happiness: number; envScore: number } | null>(null)
   const ready = useCitizenStore((s) => s.meters !== null)
 
   const finalize = () => {
     const grid = getConstructionGrid()
     const meters = useCitizenStore.getState().meters
     if (!grid || !meters) return
-    setReport({ checks: auditPark(grid, useParkStore.getState().blocks), happiness: Math.round(meters.happiness) })
+    setReport({
+      checks: auditPark(grid, useParkStore.getState().blocks),
+      happiness: Math.round(meters.happiness),
+      envScore: environmentScore(meters.greenShare, meters.co2TonnesPerYear),
+    })
   }
 
   return (
@@ -53,12 +58,12 @@ export function TopBar() {
   )
 }
 
-function FinalReport({ checks, happiness, onClose }: { checks: RuleCheck[]; happiness: number; onClose: () => void }) {
+function FinalReport({ checks, happiness, envScore, onClose }: { checks: RuleCheck[]; happiness: number; envScore: number; onClose: () => void }) {
   const meters = useCitizenStore((s) => s.meters)
   const requests = useCitizenStore((s) => s.requests)
   const budget = useParkStore((s) => s.budget)
   const stats = useParkStore((s) => s.simulation.stats)
-  const { stars, ending } = rateDesign(checks, happiness)
+  const { stars, ending, environmentPenalty } = rateDesign(checks, happiness, envScore)
   const story = ENDINGS[ending]
   const satisfied = requests.filter((r) => r.satisfied).length
 
@@ -89,6 +94,11 @@ function FinalReport({ checks, happiness, onClose }: { checks: RuleCheck[]; happ
         </div>
         <h2 id="final-report-title">{story.title}</h2>
         <p className="final-report__story">{story.text}</p>
+        {environmentPenalty && (
+          <p className="final-report__penalty">
+            −1 ★ Environmental score {envScore} is below {ENVIRONMENT.threshold}. Add green space or trees to absorb more CO₂.
+          </p>
+        )}
 
         <div className="final-report__grid">
           <div>
@@ -98,7 +108,9 @@ function FinalReport({ checks, happiness, onClose }: { checks: RuleCheck[]; happ
                 <li key={c.rule} className={c.pass ? 'is-pass' : 'is-fail'}>
                   <span className="final-report__mark">{c.pass ? '✓' : '✗'}</span>
                   <span>
-                    <strong>{c.label}</strong>
+                    <a href={sourcesHref(c.rule)} target="_blank" rel="noopener noreferrer" title="Sources for this rule">
+                      <strong>{c.label}</strong>
+                    </a>
                     {c.violations.map((v) => (
                       <small key={v.message}>{v.message}</small>
                     ))}
@@ -110,6 +122,14 @@ function FinalReport({ checks, happiness, onClose }: { checks: RuleCheck[]; happ
           <div>
             <h3>Park summary</h3>
             <dl className="final-report__stats">
+              <dt title={`${ENVIRONMENT.greenWeight}% green coverage (${ENVIRONMENT.greenFloor * 100}% → ${ENVIRONMENT.greenTarget * 100}%) + ${ENVIRONMENT.co2Weight}% CO₂ (up to ${ENVIRONMENT.co2Target} t/yr)`}>
+                <a href={sourcesHref('environment-score')} target="_blank" rel="noopener noreferrer" title="Sources">
+                  Environmental score
+                </a>
+              </dt>
+              <dd className={envScore < ENVIRONMENT.threshold ? 'is-low' : ''}>
+                {envScore} <small>/ 100</small>
+              </dd>
               <dt>Average happiness</dt>
               <dd>{happiness}%</dd>
               <dt>Requests satisfied</dt>

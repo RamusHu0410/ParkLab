@@ -30,10 +30,12 @@ export interface RequestResult {
   happiness: number
   criteria: Criterion[]
   notes: string[]
+  /** What the player could add for this citizen, in plain words: shown by the Hint button, without numbers or scoring. */
+  suggestions: string[]
   /**
    * What the citizen says, in their own words: a vague hint for each unmet
    * requirement (bonuses only once the requirements are met), or thanks.
-   * The exact numbers stay in `criteria`, shown only in help mode.
+   * The exact numbers stay in `criteria` and are not shown to the player.
    */
   voice: string[]
 }
@@ -129,6 +131,12 @@ function enoch(snap: ParkSnapshot): RequestResult {
     satisfied: criteria.every((c) => c.bonus || c.pass),
     happiness: happinessOf(criteria),
     criteria,
+    suggestions: [
+      'Plant more green: woodland, habitat, grassland or gardens.',
+      'Keep parking to a minimum.',
+      'Leave one big open lawn with nothing in the way.',
+      'Add trees and wild planting to soak up carbon.',
+    ],
     voice: voiceOf(
       criteria,
       [
@@ -277,6 +285,7 @@ function job(
   criteria: Criterion[],
   hints: string[],
   praise: string,
+  suggestions: string[],
   notes: string[] = [],
 ): RequestResult {
   return {
@@ -286,6 +295,7 @@ function job(
     happiness: happinessOf(criteria),
     criteria,
     voice: voiceOf(criteria, hints, praise),
+    suggestions,
     notes,
   }
 }
@@ -296,6 +306,7 @@ function adam(snap: ParkSnapshot): RequestResult {
     [buildJob('New basketball court', builtCount(snap, 'basketball_court')), buildJob('Outdoor fitness area', builtCount(snap, 'fitness_area')), buildJob('Picnic area to hang out', builtCount(snap, 'picnic_area'), 1, true)],
     ['The courts are always full after school. We need another basketball court.', "There's nowhere to do pull-ups. An outdoor gym would be awesome.", 'Somewhere with tables to hang out after a game would be nice.'],
     'New court, new gym. Best park in Markham!',
+    ['A new basketball court (Facilities).', 'An outdoor fitness area (Facilities).', 'Extra: a picnic area to hang out after games.'],
     ['Build these with the Facilities tab.'],
   )
 }
@@ -313,6 +324,7 @@ function bob(snap: ParkSnapshot): RequestResult {
     ],
     ['There’s no square where us old folks can sit together and chat.', 'A proper flower garden would brighten my mornings.', 'The park is losing its green. I liked it leafy.', 'A lawn for family picnics would bring the grandchildren round.'],
     'A plaza and flowers! I come here every morning now.',
+    ['A community plaza (Facilities).', 'A flower garden (Areas).', 'Keep the park leafy and green.', 'Extra: a picnic lawn for families.'],
     ['Paint areas with the Areas tab (brush or polygon).'],
   )
 }
@@ -344,6 +356,7 @@ function colgne(snap: ParkSnapshot): RequestResult {
     ],
     ['We loved the old playgrounds. Please don’t take them away.', 'My daughter waits ages for the swings. We need another playground.', 'There’s nowhere for us parents to sit on a blanket while the kids play.', 'A shelter with tables would save us when it rains.'],
     'A brand new playground and a lawn to relax on. Thank you!',
+    ['Keep the playgrounds that are already there.', 'A new playground (Facilities).', 'A picnic lawn for the parents (Areas).', 'Extra: a picnic area with a shelter.'],
   )
 }
 
@@ -361,6 +374,7 @@ function dylan(snap: ParkSnapshot, baseline: Baseline): RequestResult {
     ],
     ['Those empty tennis courts take up so much space. My dog could run there!', 'We need a big grassy patch where dogs can stretch their legs.', 'Keep the park green. That’s where we walk every day.', 'Some wild planting would keep the birds and butterflies around.'],
     'An off-leash run! My dog has never been so happy.',
+    ['Take out one of the tennis courts (Remove).', 'Grassland for a dog run (Areas).', 'Keep plenty of green space for walks.', 'Extra: some biodiversity habitat.'],
     ['Remove the court with the Remove tab, then paint grassland where it was.'],
   )
 }

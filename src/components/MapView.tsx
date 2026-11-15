@@ -11,7 +11,7 @@ import { makeTransformConstrain } from '../geography/cameraBounds'
 import { BLOCK_LAYERS, BLOCKS_SOURCE_ID, PREVIEW_LAYERS, PREVIEW_SOURCE_ID } from '../geography/constructionLayers'
 import { BASEMAP_STYLE_URL, CAMERA_LIMITS, INITIAL_CAMERA, INTRO_END, INTRO_FINAL, INTRO_FLIGHT_MS, INTRO_START, PARK_MAP_URL } from '../geography/constants'
 import { hoverInfoAt } from '../geography/hoverInfo'
-import { collectLandmarks, landmarkToMarker } from '../geography/landmarks'
+import { collectLandmarks, type Landmark } from '../geography/landmarks'
 import { buildLocalGrid } from '../geography/localGrid'
 import { type ParkGeometry, parseParkGeometry } from '../geography/parkGeometry'
 import { localToLngLat } from '../geography/projection'
@@ -161,7 +161,7 @@ export function MapView() {
         PARK_BOUNDARY_LAYERS.forEach((l) => map.addLayer(l, BEFORE_BUILDINGS))
         LOCAL_GRID_LAYERS.forEach((l) => map.addLayer({ ...l, layout: { ...l.layout, visibility: 'none' } }))
 
-        // Quiet basemap: white translucent buildings, and no flat POI icons (replaced by floating landmarks).
+        // Quiet basemap: white translucent buildings, and no POI icons (building names show on hover instead).
         for (const id of BASEMAP_POI_LAYERS) if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', 'none')
         if (map.getLayer('building-3d')) {
           map.setPaintProperty('building-3d', 'fill-extrusion-color', BUILDING_STYLE.color)
@@ -232,8 +232,7 @@ export function MapView() {
 
         syncCamera()
         setStatus('ready')
-        // No title card: the intro flight starts as soon as the park has loaded.
-        useMapStore.getState().playIntro()
+        // The intro flight starts when the player picks the level on the intro screen.
       } catch (err) {
         console.error(err)
         setStatus('error', err instanceof Error ? err.message : String(err))
@@ -241,12 +240,14 @@ export function MapView() {
     })
     map.on('error', (e) => console.error('MapLibre error:', e.error?.message ?? e))
 
-    // Landmarks come from the vector tiles, so refresh them as tiles load.
+    // Named places inside buildings (school, church…), used for hover tooltips only; no icons are drawn.
+    // They come from the vector tiles, so refresh them as tiles load.
+    let landmarks = new Map<string | number, Landmark>()
     let landmarkTimer: number | undefined
     map.on('idle', () => {
       window.clearTimeout(landmarkTimer)
       landmarkTimer = window.setTimeout(() => {
-        overlay.setMarkers('buildings', collectLandmarks(map).map(landmarkToMarker))
+        landmarks = new Map(collectLandmarks(map).flatMap((l) => (l.buildingId == null ? [] : [[l.buildingId, l] as const])))
         map.triggerRepaint()
       }, 50)
     })
@@ -261,7 +262,10 @@ export function MapView() {
         return
       }
       if (useMapStore.getState().status !== 'ready' || map.isMoving()) return
-      const html = hoverInfoAt(map, e.point, (id) => overlay.findByBuilding(id ?? undefined))
+      const html = hoverInfoAt(map, e.point, (id) => {
+        const l = id == null ? undefined : landmarks.get(id)
+        return l && { key: l.key, icon: l.icon, name: l.name, kind: l.kind, lngLat: l.lngLat, height: l.roofHeight }
+      })
       map.getCanvas().style.cursor = html ? 'pointer' : ''
       if (!html) {
         tooltip.remove()

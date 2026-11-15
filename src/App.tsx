@@ -1,6 +1,9 @@
 import { ConstructionPanel } from './components/ConstructionPanel'
 import { DevPanel } from './components/DevPanel'
 import { HintButton } from './components/HintButton'
+import { IntroScreen } from './components/IntroScreen'
+import { RegulationsPanel } from './components/RegulationsPanel'
+import { SourcesPage } from './components/SourcesPage'
 import { MetersPanel } from './components/MetersPanel'
 import { MapView } from './components/MapView'
 import { RequestPanel } from './components/RequestPanel'
@@ -14,6 +17,7 @@ const view = new URLSearchParams(window.location.search).get('view')
 export default function App() {
   const introActive = useMapStore((st) => st.introActive)
   const introTitle = useMapStore((st) => st.introTitle)
+  if (view === 'sources') return <SourcesPage />
   if (view === 'scene') {
     return (
       <div className="app">
@@ -31,11 +35,13 @@ export default function App() {
           <div className="map-hud">
             <MetersPanel />
             <HintButton />
+            <RegulationsPanel />
           </div>
         </div>
         <RequestPanel />
       </div>
       <ConstructionPanel />
+      <IntroScreen />
       {introTitle && (
         <div className="intro-title" aria-live="polite">
           Wismer Park, Markham

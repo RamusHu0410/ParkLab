@@ -3,6 +3,7 @@ import type { CitizenStatus, Movement } from '../citizens/citizenSim'
 import { PORTRAIT_BACKGROUND, REPRESENTATIVE_LOOKS } from '../citizens/looks'
 import type { RequestResult } from '../citizens/requests'
 import { renderPortrait } from '../scene/three/portraits'
+import { sourcesHref } from '../construction/sources'
 import { useCitizenStore } from '../store/citizenStore'
 
 /** Head-and-shoulders render of the representative's 3D model; the emoji shows until it's ready. */
@@ -18,7 +19,7 @@ function Portrait({ id, fallback }: { id: string; fallback: string }) {
     }
   }, [id])
   return (
-    <span className="portrait" style={{ background: PORTRAIT_BACKGROUND[id] ?? '#ffe7b3' }}>
+    <span className="portrait" style={{ background: PORTRAIT_BACKGROUND[id] ?? '#e3efd9' }}>
       {src ? <img src={src} alt="" /> : <span className="portrait__fallback">{fallback}</span>}
     </span>
   )
@@ -26,13 +27,42 @@ function Portrait({ id, fallback }: { id: string; fallback: string }) {
 
 const MOVEMENT_LABEL: Record<Movement, string> = { idle: 'Idle', walking: 'Walking', arrived: 'At destination', stuck: 'Stuck' }
 
+type Mood = 'delighted' | 'happy' | 'neutral' | 'unhappy'
+
+const MOUTH: Record<Mood, string> = {
+  delighted: 'M7 13.5 Q12 19 17 13.5 Z',
+  happy: 'M8 14.5 Q12 17.5 16 14.5',
+  neutral: 'M8.5 15.5 H15.5',
+  unhappy: 'M8 16.5 Q12 13.5 16 16.5',
+}
+
+/** Flat face icon for the happiness bar, filled with the bar's colour. */
+function MoodFace({ mood, color }: { mood: Mood; color: string }) {
+  return (
+    <svg className="happiness__face" viewBox="0 0 24 24" width={18} height={18} role="img" aria-label={mood}>
+      <circle cx={12} cy={12} r={10.5} fill={color} stroke="#00000026" strokeWidth={1} />
+      <circle cx={8.8} cy={9.5} r={1.4} fill="#3b2f2a" />
+      <circle cx={15.2} cy={9.5} r={1.4} fill="#3b2f2a" />
+      <path
+        d={MOUTH[mood]}
+        fill={mood === 'delighted' ? '#3b2f2a' : 'none'}
+        stroke="#3b2f2a"
+        strokeWidth={1.6}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  )
+}
+
 function HappinessBar({ value }: { value: number }) {
-  const mood = value >= 80 ? '😄' : value >= 55 ? '🙂' : value >= 30 ? '😐' : '😟'
+  const mood: Mood = value >= 80 ? 'delighted' : value >= 55 ? 'happy' : value >= 30 ? 'neutral' : 'unhappy'
+  const color = { delighted: '#5cb85c', happy: '#9ccc65', neutral: '#ffb74d', unhappy: '#ef6c6c' }[mood]
   return (
     <div className="happiness" title={`Happiness ${value}/100`}>
-      <span className="happiness__face">{mood}</span>
+      <MoodFace mood={mood} color={color} />
       <div className="happiness__track">
-        <div className="happiness__fill" style={{ width: `${value}%`, background: value >= 80 ? '#5cb85c' : value >= 55 ? '#9ccc65' : value >= 30 ? '#ffb74d' : '#ef6c6c' }} />
+        <div className="happiness__fill" style={{ width: `${value}%`, background: color }} />
       </div>
       <span className="happiness__value">{value}</span>
     </div>
@@ -71,33 +101,16 @@ function RequestCard({ r, citizen }: { r: RequestResult; citizen: CitizenStatus 
         ))}
       </div>
       {help && (
-      <ul className="criteria">
-        {r.criteria.map((c) => (
-          <li key={c.label} className={c.pass ? 'criteria--pass' : 'criteria--fail'}>
-            <span className="criteria__mark">{c.pass ? '✓' : c.bonus ? '○' : '✗'}</span>
-            <span className="criteria__label">
-              {c.label}
-              {c.bonus && <em> (bonus)</em>}
-            </span>
-            <span className="criteria__value">
-              {c.value} <small>/ {c.target}</small>
-            </span>
-            <span className="criteria__bar">
-              <span style={{ width: `${Math.round(c.progress * 100)}%` }} />
-            </span>
-          </li>
-        ))}
-      </ul>
+        <div className="wants">
+          <span className="wants__title">💡 Try adding</span>
+          <ul>
+            {r.suggestions.map((t) => (
+              <li key={t}>{t}</li>
+            ))}
+          </ul>
+        </div>
       )}
       <CitizenLine c={citizen} />
-      {help && r.notes.length > 0 && (
-        <details className="request-card__notes">
-          <summary>How this is measured</summary>
-          {r.notes.map((n) => (
-            <p key={n}>{n}</p>
-          ))}
-        </details>
-      )}
     </article>
   )
 }
@@ -127,6 +140,9 @@ export function RequestPanel() {
             <span>Loading the park…</span>
           )}
           {evaluating && <span className="request-panel__checking">Checking…</span>}
+          <a className="request-panel__sources" href={sourcesHref('requests')} target="_blank" rel="noopener noreferrer">
+            Sources ↗
+          </a>
         </div>
       </header>
       <div className="request-panel__list">
