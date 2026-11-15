@@ -24,3 +24,27 @@ export const CAMERA_LIMITS = {
   maxPitch: 70,
   // Panning range is limited by geography/cameraBounds.ts (camera centre clamp).
 }
+
+/** Intro: the camera opens over the park origin… */
+export const INTRO_START = {
+  center: [-79.27993, 43.89937] as [number, number],
+  zoom: 16.5,
+  pitch: 50,
+  bearing: -15,
+} as const
+/** …then flies east over the park (local x 124.6 m, z 15.7 m)… */
+export const INTRO_END = {
+  center: [-79.27825, 43.89958] as [number, number],
+  zoom: 17.7,
+  pitch: 50,
+  bearing: 78,
+} as const
+/** …and ends looking south over the park centre (local x 19.1 m, z -45.7 m). */
+export const INTRO_FINAL = {
+  center: [-79.27973, 43.89982] as [number, number],
+  zoom: 16.3,
+  pitch: 50,
+  bearing: 167,
+} as const
+/** Duration of each intro flight leg (ms). */
+export const INTRO_FLIGHT_MS = 5000

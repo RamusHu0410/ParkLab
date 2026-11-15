@@ -1,11 +1,35 @@
 import type { Feature, FeatureCollection, Geometry } from 'geojson'
-import type { Ring, Vec2 } from '../utils/geometry2d'
+import { dist, distToPolyline, distToRingEdge, pointAlong, pointInRing, polylineLength, type Ring, type Vec2 } from '../utils/geometry2d'
 import { lngLatToLocal } from './projection'
 
 export interface AreaFeature {
   ring: Ring
   /** Source feature id, e.g. "way/171477483" or the Markham OBJECTID. */
   sourceId: string
+}
+
+export interface PathInfo {
+  line: Vec2[]
+  /** OSM highway tag: path, footway, service... */
+  highway: string
+  /** OSM surface tag, if mapped. */
+  surface?: string
+  sourceId: string
+}
+
+export interface Street {
+  name: string
+  /** OpenMapTiles class: primary, secondary, tertiary (arterials) or minor (local streets). */
+  cls: string
+  line: Vec2[]
+}
+
+/** Where a park path meets the park boundary. */
+export interface Entrance {
+  id: string
+  point: Vec2
+  /** Street the entrance opens onto. */
+  street: string
 }
 
 /** Wismer Park geometry in local metres [x, z]. Built from public/maps/wismer-park.geojson. */
@@ -23,6 +47,10 @@ export interface ParkGeometry {
   serviceRoads: Vec2[][]
   /** Open-channel streams only; culverts are underground. */
   streams: Vec2[][]
+  pathInfo: PathInfo[]
+  streets: Street[]
+  destinations: { name: string; ring: Ring }[]
+  entrances: Entrance[]
 }
 
 const toLocal = (c: number[]): Vec2 => {
@@ -53,8 +81,23 @@ export function parseParkGeometry(fc: FeatureCollection<Geometry, Props>): ParkG
   const lines = (cat: string): Vec2[][] =>
     byCat(cat).flatMap((f) => (f.geometry.type === 'LineString' ? [f.geometry.coordinates.map(toLocal)] : []))
 
+  const pathInfo: PathInfo[] = byCat('path').flatMap((f) =>
+    f.geometry.type === 'LineString'
+      ? [{ line: f.geometry.coordinates.map(toLocal), highway: String(f.properties['osm:highway'] ?? 'path'), surface: f.properties['osm:surface'] as string | undefined, sourceId: String(f.properties.osm_id) }]
+      : [],
+  )
+  const streets: Street[] = byCat('street').flatMap((f) =>
+    f.geometry.type === 'LineString' ? [{ name: String(f.properties.name), cls: String(f.properties.street_class), line: f.geometry.coordinates.map(toLocal) }] : [],
+  )
+  const destinations = areas('destination').map((a, i) => ({ name: String(byCat('destination')[i].properties.name), ring: a.ring }))
+  const outer = one('park_outer_boundary')
+
   return {
-    outer: one('park_outer_boundary'),
+    outer,
+    pathInfo,
+    streets,
+    destinations,
+    entrances: findEntrances(pathInfo.map((p) => p.line), outer, streets),
     parkArea: one('park_area'),
     woodlot: one('woodlot'),
     valley: one('valley'),
@@ -67,4 +110,37 @@ export function parseParkGeometry(fc: FeatureCollection<Geometry, Props>): ParkG
     serviceRoads: lines('service_road'),
     streams: lines('stream'),
   }
+}
+
+/**
+ * Entrances are where paths leave the park (crossing the boundary) or end
+ * within 8 m of it. Points closer than 15 m are merged. Each is named after the
+ * nearest street.
+ */
+export function findEntrances(paths: Vec2[][], outer: Ring, streets: Street[]): Entrance[] {
+  const found: Vec2[] = []
+  const add = (p: Vec2) => {
+    if (!found.some((q) => dist(p, q) < 15)) found.push(p)
+  }
+  for (const line of paths) {
+    const L = polylineLength(line)
+    let prev = pointAlong(line, 0).p
+    let prevIn = pointInRing(prev, outer)
+    for (let d = 1; d <= L; d += 1) {
+      const p = pointAlong(line, d).p
+      const inside = pointInRing(p, outer)
+      if (inside !== prevIn) add(inside ? p : prev)
+      prev = p
+      prevIn = inside
+    }
+    for (const end of [line[0], line[line.length - 1]]) if (pointInRing(end, outer) && distToRingEdge(end, outer) < 8) add(end)
+  }
+  return found.map((p, i) => {
+    let best = { name: '', d: Infinity }
+    for (const s of streets) {
+      const d = distToPolyline(p, s.line)
+      if (d < best.d) best = { name: s.name, d }
+    }
+    return { id: `entrance-${i}`, point: p, street: best.name }
+  })
 }

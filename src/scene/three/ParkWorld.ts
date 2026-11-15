@@ -20,6 +20,7 @@ import type { PlacedItem } from '../../construction/types'
 import type { Ring } from '../../utils/geometry2d'
 import { instantiateCharacter, loadCharacter, loadModelParts } from './assetLibrary'
 import { buildFacility } from './facilityMeshes'
+import { applyTint } from './portraits'
 import { LIGHTING } from './palette'
 
 /** A character standing still or walking back and forth along a polyline. */
@@ -36,6 +37,16 @@ export interface CitizenSpec {
   speed?: number
   /** Playback speed of the Walk clip, so the feet match the ground speed. */
   timeScale?: number
+}
+
+export type AgentClip = 'Idle' | 'Walk' | 'Run'
+
+/** A character driven from outside (the citizen simulation): ParkWorld only poses and animates it. */
+interface Agent {
+  root: Object3D
+  mixer: AnimationMixer
+  actions: Partial<Record<AgentClip, AnimationAction>>
+  clip: AgentClip | null
 }
 
 interface CitizenRuntime {
@@ -59,6 +70,9 @@ export class ParkWorld {
   private facilities: Facility[] = []
   private readonly groups = new Map<string, { items: PlacedItem[]; object: Group }>()
   private citizens: CitizenRuntime[] = []
+  private agents = new Map<string, Agent>()
+  /** Runs every frame before animations update (the citizen simulation hooks in here). */
+  beforeUpdate: (dt: number) => void = () => {}
   private disposed = false
   /** Called when something async finished loading and the map should redraw. */
   onChange: () => void = () => {}
@@ -199,7 +213,54 @@ export class ParkWorld {
   }
 
   get animating() {
-    return this.citizens.length > 0
+    return this.citizens.length > 0 || this.agents.size > 0
+  }
+
+  /** Adds a driven character. Resolves once its model is loaded. */
+  async addAgent(id: string, assetId: string, scale: number, tint?: Record<string, number>): Promise<void> {
+    if (this.agents.has(id)) return
+    const tpl = await loadCharacter(assetId)
+    if (this.disposed || this.agents.has(id)) return
+    const root = instantiateCharacter(tpl)
+    applyTint(root, tint)
+    root.scale.setScalar(scale)
+    root.name = `agent:${id}`
+    const mixer = new AnimationMixer(root)
+    const actions: Agent['actions'] = {}
+    for (const clip of ['Idle', 'Walk', 'Run'] as const) {
+      const c = tpl.animations.find((a) => a.name === clip)
+      if (c) actions[clip] = mixer.clipAction(c)
+    }
+    root.visible = false
+    this.agents.set(id, { root, mixer, actions, clip: null })
+    this.citizensRoot.add(root)
+    this.onChange()
+  }
+
+  /** Poses a driven character. `yaw` 0 faces +z. Switching clip cross-fades over 0.25 s. */
+  setAgent(id: string, x: number, z: number, yaw: number, clip: AgentClip, timeScale = 1) {
+    const a = this.agents.get(id)
+    if (!a) return
+    a.root.visible = true
+    a.root.position.set(x, 0, z)
+    a.root.rotation.y = yaw
+    const next = a.actions[clip] ?? a.actions.Idle
+    if (!next) return
+    next.timeScale = timeScale
+    if (a.clip !== clip) {
+      const prev = a.clip ? a.actions[a.clip] : undefined
+      next.reset().play()
+      if (prev && prev !== next) next.crossFadeFrom(prev, 0.25, false)
+      a.clip = clip
+    }
+  }
+
+  removeAgent(id: string) {
+    const a = this.agents.get(id)
+    if (!a) return
+    a.mixer.stopAllAction()
+    this.citizensRoot.remove(a.root)
+    this.agents.delete(id)
   }
 
   private placeCitizen(c: CitizenRuntime) {
@@ -229,6 +290,8 @@ export class ParkWorld {
   }
 
   update(dt: number) {
+    this.beforeUpdate(dt)
+    for (const a of this.agents.values()) a.mixer.update(dt)
     for (const c of this.citizens) {
       c.mixer.update(dt)
       if (c.spec.clip === 'Walk') {

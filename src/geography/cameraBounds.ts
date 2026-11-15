@@ -19,7 +19,12 @@ const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v
 
 /** Clamps a lon/lat camera centre into CAMERA_CENTER_BOUNDS_LOCAL. */
 export function clampCameraCenter([lng, lat]: [number, number]): [number, number] {
+  // While the map is being set up, MapLibre runs the constraint on its default centre
+  // (0°, 0°). That is far outside UTM zone 17, so the local projection is not finite and
+  // proj4 would throw. Leave such centres alone; MapLibre applies the real one next.
+  if (!Number.isFinite(lng) || !Number.isFinite(lat)) return [lng, lat]
   const [x, , z] = lngLatToLocal([lng, lat])
+  if (!Number.isFinite(x) || !Number.isFinite(z)) return [lng, lat]
   const b = CAMERA_CENTER_BOUNDS_LOCAL
   const cx = clamp(x, b.minX, b.maxX)
   const cz = clamp(z, b.minZ, b.maxZ)

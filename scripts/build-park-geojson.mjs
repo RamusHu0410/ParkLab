@@ -1,6 +1,7 @@
 // Builds public/maps/wismer-park.geojson from:
 //   1. Assets/WismerParks.geojson        City of Markham Parks dataset (official)
 //   2. data/osm/wismer-overpass.json     OpenStreetMap via Overpass (community-mapped)
+//   3. data/osm/wismer-streets.json      named streets around the park (OpenStreetMap via OpenFreeMap tiles)
 // Run with: node scripts/build-park-geojson.mjs
 //
 // Every output feature carries:
@@ -13,6 +14,7 @@ import path from 'node:path'
 const root = path.resolve(import.meta.dirname, '..')
 const MARKHAM_FILE = path.join(root, 'Assets/WismerParks.geojson')
 const OSM_FILE = path.join(root, 'data/osm/wismer-overpass.json')
+const STREETS_FILE = path.join(root, 'data/osm/wismer-streets.json')
 const OUT_FILE = path.join(root, 'public/maps/wismer-park.geojson')
 
 const round = (n) => Math.round(n * 1e7) / 1e7
@@ -159,6 +161,38 @@ for (const el of osm.elements) {
   })
 }
 
+// ---- 3. Reference features for the simulation (not drawn on the map) ----
+// Streets within ~250 m of the park, for entrances and traffic-safety checks.
+const parkBox = (() => {
+  const xs = parkRings.flat().map((p) => p[0])
+  const ys = parkRings.flat().map((p) => p[1])
+  const pad = 0.0032 // ≈ 250 m
+  return { w: Math.min(...xs) - pad, e: Math.max(...xs) + pad, s: Math.min(...ys) - pad / 1.4, n: Math.max(...ys) + pad / 1.4 }
+})()
+const nearPark = ([x, y]) => x >= parkBox.w && x <= parkBox.e && y >= parkBox.s && y <= parkBox.n
+const streetsSrc = JSON.parse(fs.readFileSync(STREETS_FILE, 'utf8'))
+const streetFeatures = []
+for (const f of streetsSrc.features) {
+  const lines = f.geometry.type === 'LineString' ? [f.geometry.coordinates] : f.geometry.type === 'MultiLineString' ? f.geometry.coordinates : []
+  for (const line of lines) {
+    if (!line.some(nearPark)) continue
+    streetFeatures.push({
+      type: 'Feature',
+      properties: { category: 'street', name: f.properties.name, street_class: f.properties.class, source: 'OpenStreetMap', verification: 'osm-community' },
+      geometry: { type: 'LineString', coordinates: roundCoords(line) },
+    })
+  }
+}
+// Named destinations outside the park that citizens head for.
+const DESTINATIONS = { 'way/220406701': 'Bur Oak Secondary School' }
+const destinationFeatures = osm.elements
+  .filter((el) => DESTINATIONS[`${el.type}/${el.id}`] && el.geometry)
+  .map((el) => ({
+    type: 'Feature',
+    properties: { category: 'destination', name: DESTINATIONS[`${el.type}/${el.id}`], osm_id: `${el.type}/${el.id}`, source: 'OpenStreetMap', verification: 'osm-community' },
+    geometry: { type: 'Polygon', coordinates: [roundCoords(el.geometry.map((p) => [p.lon, p.lat]))] },
+  }))
+
 const out = {
   type: 'FeatureCollection',
   name: 'WismerPark',
@@ -168,10 +202,11 @@ const out = {
     sources: {
       'City of Markham': 'City of Markham Parks dataset (Assets/WismerParks.geojson). Treated as authoritative for boundaries.',
       OpenStreetMap: `Overpass API, OSM base ${osm.osm3s?.timestamp_osm_base}. © OpenStreetMap contributors, ODbL. Community-mapped; not verified against an official site map.`,
+      streets: streetsSrc.metadata?.source,
     },
     generatedAt: new Date().toISOString(),
   },
-  features: [...markhamFeatures, ...osmFeatures],
+  features: [...markhamFeatures, ...osmFeatures, ...streetFeatures, ...destinationFeatures],
 }
 
 fs.writeFileSync(OUT_FILE, JSON.stringify(out))

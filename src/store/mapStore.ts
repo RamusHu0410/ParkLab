@@ -19,6 +19,18 @@ interface MapState {
   show3dBuildings: boolean
   showIcons: boolean
   resetView: () => void
+  /** Flies from the intro view to the welcome gate. */
+  playIntro: () => void
+  /** True until the player leaves the intro screen. */
+  introOpen: boolean
+  /** True from page load until the intro flight ends; the UI panels are hidden meanwhile. */
+  introActive: boolean
+  endIntro: () => void
+  /** True during the second intro flight leg, when the park name is shown. */
+  introTitle: boolean
+  setIntroTitle: (v: boolean) => void
+  closeIntro: () => void
+  setPlayIntro: (fn: () => void) => void
   /** Turns the camera by `deg` degrees (positive = clockwise). */
   rotateBy: (deg: number) => void
 
@@ -40,6 +52,14 @@ export const useMapStore = create<MapState>()((set) => ({
   showIcons: true,
   resetView: () => {},
   rotateBy: () => {},
+  playIntro: () => {},
+  introOpen: true,
+  introActive: true,
+  endIntro: () => set({ introActive: false, introTitle: false }),
+  introTitle: false,
+  setIntroTitle: (introTitle) => set({ introTitle }),
+  closeIntro: () => set({ introOpen: false }),
+  setPlayIntro: (playIntro) => set({ playIntro }),
 
   setStatus: (status, error) => set({ status, error: error ?? null }),
   setCamera: (camera) => set({ camera }),

@@ -1,0 +1,61 @@
+{
+  "id": "1_wismer_park",
+  "name": "Wismer Park",
+  "startingFunds": 250000,
+  "currency": "CAD",
+  "economy": {
+    "removalRefundRate": 0.5,
+    "undoRefundRate": 1,
+    "existingRemoval": {
+      "itemCost": 50,
+      "facilityCost": 2000
+    }
+  },
+  "costs": {
+    "path": {
+      "walking_trail": {
+        "perSquareMetre": 40
+      },
+      "accessible_path": {
+        "perSquareMetre": 90
+      },
+      "jogging_trail": {
+        "perSquareMetre": 60
+      }
+    },
+    "area": {
+      "woodland": {
+        "perSquareMetre": 12
+      },
+      "grassland": {
+        "perSquareMetre": 4
+      },
+      "flower_garden": {
+        "perSquareMetre": 35
+      },
+      "habitat": {
+        "perSquareMetre": 15
+      },
+      "picnic_lawn": {
+        "perSquareMetre": 8
+      }
+    },
+    "facility": {
+      "playground": {
+        "flat": 45000
+      },
+      "basketball_court": {
+        "flat": 30000
+      },
+      "picnic_area": {
+        "flat": 12000
+      },
+      "community_plaza": {
+        "flat": 40000
+      },
+      "fitness_area": {
+        "flat": 20000
+      }
+    }
+  }
+}
