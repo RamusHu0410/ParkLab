@@ -1,20 +1,5 @@
-import { CATEGORY_STYLE } from '../geography/parkLayers'
 import { lngLatToLocal } from '../geography/projection'
 import { useMapStore } from '../store/mapStore'
-
-const LEGEND: (keyof typeof CATEGORY_STYLE)[] = [
-  'park_area',
-  'woodlot',
-  'valley',
-  'playground',
-  'sports_field',
-  'tennis_court',
-  'basketball_court',
-  'stream',
-  'path',
-  'parking',
-  'adjacent_school',
-]
 
 export function MapPanel() {
   const status = useMapStore((s) => s.status)
@@ -22,34 +7,32 @@ export function MapPanel() {
   const camera = useMapStore((s) => s.camera)
   const showLocalGrid = useMapStore((s) => s.showLocalGrid)
   const show3dBuildings = useMapStore((s) => s.show3dBuildings)
-  const { toggleLocalGrid, toggle3dBuildings, resetView } = useMapStore.getState()
+  const showIcons = useMapStore((s) => s.showIcons)
+  const { toggleLocalGrid, toggle3dBuildings, toggleIcons, resetView, rotateBy } = useMapStore.getState()
   const local = camera ? lngLatToLocal([camera.lng, camera.lat]) : null
 
   return (
     <div className="map-panel">
       <strong>Wismer Park</strong>
       <div className="map-panel__status" data-status={status}>
-        {status === 'error' ? `Map error: ${error}` : status === 'ready' ? 'Map ready' : 'Loading map…'}
+        {status === 'error' ? `Map error: ${error}` : status === 'ready' ? 'Hover over buildings and park features for details' : 'Loading map…'}
       </div>
-
-      <ul className="legend">
-        <li>
-          <span className="swatch swatch--boundary" /> Park boundary (City of Markham)
-        </li>
-        {LEGEND.map((k) => (
-          <li key={k}>
-            <span className="swatch" style={{ background: CATEGORY_STYLE[k].color }} /> {CATEGORY_STYLE[k].label}
-          </li>
-        ))}
-      </ul>
 
       <label>
         <input type="checkbox" checked={show3dBuildings} onChange={toggle3dBuildings} /> 3D buildings
       </label>
       <label>
-        <input type="checkbox" checked={showLocalGrid} onChange={toggleLocalGrid} /> Local 100 m grid (UTM 17N)
+        <input type="checkbox" checked={showIcons} onChange={toggleIcons} /> Icons
       </label>
+      <label>
+        <input type="checkbox" checked={showLocalGrid} onChange={toggleLocalGrid} /> Local 100 m grid
+      </label>
+      <div className="map-panel__rotate">
+        <button onClick={() => rotateBy(-30)} title="Turn camera left 30°">⟲ Turn left</button>
+        <button onClick={() => rotateBy(30)} title="Turn camera right 30°">Turn right ⟳</button>
+      </div>
       <button onClick={() => resetView()}>Reset view</button>
+      <small className="map-panel__hint">Turn: right-drag or Ctrl+drag · Tilt: drag up/down while turning · Keys: Shift+arrows</small>
 
       {camera && local && (
         <div className="map-panel__camera">
@@ -59,7 +42,6 @@ export function MapPanel() {
           local x {local[0].toFixed(1)} m, z {local[2].toFixed(1)} m
         </div>
       )}
-      <small>OSM features are community-mapped and not verified against an official site map. Click a feature for details.</small>
     </div>
   )
 }

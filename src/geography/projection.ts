@@ -24,7 +24,11 @@ export const UTM17N = 'EPSG:32617'
 
 proj4.defs(UTM17N, '+proj=utm +zone=17 +datum=WGS84 +units=m +no_defs +type=crs')
 
-/** Initial map centre from the roadmap; also the local origin for the simulation. */
+/**
+ * Local origin for the simulation (the roadmap's original map centre, inside the
+ * park near the soccer fields). Fixed so that saved positions stay valid even
+ * if the start camera changes.
+ */
 export const PARK_ORIGIN_LNGLAT: [number, number] = [-79.27979, 43.89938]
 
 const toUtm = proj4(WGS84, UTM17N)

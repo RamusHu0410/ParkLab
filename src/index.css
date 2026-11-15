@@ -18,7 +18,7 @@ body,
   position: absolute;
   top: 12px;
   left: 12px;
-  width: 250px;
+  width: 230px;
   display: flex;
   flex-direction: column;
   gap: 6px;
@@ -33,33 +33,113 @@ body,
   color: #b00020;
 }
 
+.map-panel__rotate {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+}
+
+.map-panel__hint {
+  color: #555;
+  font-size: 11px;
+}
+
 .map-panel__camera {
   font-family: ui-monospace, monospace;
   font-size: 11px;
   color: #444;
 }
 
-.legend {
-  list-style: none;
-  margin: 0;
-  padding: 0;
+.hover-tooltip {
+  pointer-events: none;
+}
+
+.hover-tooltip .maplibregl-popup-content {
+  padding: 6px 9px;
+  font-size: 12px;
+  line-height: 1.4;
+  box-shadow: 0 1px 6px rgba(0, 0, 0, 0.25);
+}
+
+/* Floating icons above buildings and park facilities */
+.marker-layer {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  overflow: hidden;
+  z-index: 1;
+}
+
+.marker {
+  position: absolute;
+  left: 0;
+  top: 0;
+  will-change: transform;
+}
+
+.marker__bubble {
+  position: absolute;
+  bottom: 12px;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 9px 3px 4px;
+  white-space: nowrap;
+  background: #fffaf0;
+  border: 2px solid #ffffff;
+  border-radius: 999px;
+  box-shadow: 0 3px 8px rgba(80, 60, 30, 0.28);
+  font-size: 11px;
+  font-weight: 600;
+  color: #5a4632;
+  animation: marker-bob 2.6s ease-in-out infinite;
+  animation-delay: var(--bob-delay, 0s);
+}
+
+.marker__icon {
   display: grid;
-  gap: 2px;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  font-size: 14px;
+  background: #ffe7b3;
+  border-radius: 50%;
 }
 
-.swatch {
-  display: inline-block;
-  width: 12px;
-  height: 12px;
-  margin-right: 4px;
-  vertical-align: -2px;
-  border-radius: 2px;
+.marker__stem {
+  position: absolute;
+  bottom: 0;
+  width: 2px;
+  height: 14px;
+  transform: translateX(-50%);
+  background: linear-gradient(#ffffff, rgba(255, 255, 255, 0));
 }
 
-.swatch--boundary {
-  background: #fff;
-  border: 3px solid #0f6b2f;
-  box-sizing: border-box;
+.marker--compact .marker__bubble {
+  padding: 2px;
+  gap: 0;
+}
+
+.marker--compact .marker__name {
+  display: none;
+}
+
+.marker--compact .marker__icon {
+  width: 24px;
+  height: 24px;
+  font-size: 15px;
+  background: #ffffff;
+}
+
+@keyframes marker-bob {
+  0%,
+  100% {
+    translate: 0 0;
+  }
+  50% {
+    translate: 0 -4px;
+  }
 }
 
 .dev-panel {
