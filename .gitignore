@@ -218,3 +218,14 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# --- ParkLab (Node / Vite) ---
+node_modules/
+*.tsbuildinfo
+.vite/
+
+# Third-party asset packs: their licenses forbid redistributing the model
+# files as standalone assets, so they are kept out of the public repo.
+# See README.md "Assets" for how to restore them locally.
+/Assets/
+/public/models/
