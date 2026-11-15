@@ -1,7 +1,9 @@
+import type { AreaType, FacilityType } from '../construction/blocks'
+import type { Facility } from '../construction/facilities'
 import type { Entrance } from '../geography/parkGeometry'
 import { findRoute, reachable } from '../simulation/pathfinding'
 import { Cell } from '../simulation/navGrid'
-import { co2UptakeTonnes, CO2, landUse, type LandUse, type ParkSnapshot, pathNextToTraffic, routeDangerM, shadedPathLength } from '../simulation/parkMetrics'
+import { co2UptakeTonnes, CO2, landUse, type LandUse, type ParkSnapshot, routeDangerM } from '../simulation/parkMetrics'
 import { dist, distToRingEdge, ringCentroid, type Vec2 } from '../utils/geometry2d'
 
 export interface Criterion {
@@ -48,17 +50,32 @@ function voiceOf(criteria: Criterion[], hints: string[], praise: string): string
 /** Figures of the park as it was before the player changed anything. */
 export interface Baseline {
   land: LandUse
+  /** Courts and fields present at the start, so demolitions can be counted. */
+  facilities: { id: string; kind: Facility['kind'] }[]
 }
 
 const fmt = (n: number, unit: string, digits = 0) => `${n.toLocaleString('en-CA', { maximumFractionDigits: digits, minimumFractionDigits: digits })} ${unit}`
 const clamp01 = (x: number) => Math.max(0, Math.min(1, x))
 const clamp100 = (x: number) => Math.round(Math.max(0, Math.min(100, x)))
-/** Required criteria set the base; each bonus adds a little on top. */
+/**
+ * Happiness rubric:
+ * - everyone starts from a 45 floor;
+ * - required criteria lift it to 80 at most. Each met requirement counts fully, unmet ones by a
+ *   small share of their progress, and the curve is eased (^1.5) so a half-done request sits
+ *   near 57 rather than 62;
+ * - only bonus criteria go above 80, up to 100.
+ */
+export const HAPPINESS = { floor: 45, requiredMax: 80, partialWeight: 0.15 }
 function happinessOf(criteria: Criterion[], penalty = 0) {
   const req = criteria.filter((c) => !c.bonus)
   const bonus = criteria.filter((c) => c.bonus)
-  const base = req.length ? (req.reduce((s, c) => s + (c.pass ? 1 : c.progress * 0.6), 0) / req.length) * 85 : 85
-  return clamp100(base + bonus.filter((c) => c.pass).length * (15 / Math.max(1, bonus.length)) - penalty)
+  const h = HAPPINESS
+  const score = req.length ? req.reduce((s, c) => s + (c.pass ? 1 : c.progress * h.partialWeight), 0) / req.length : 1
+  const base = h.floor + (h.requiredMax - h.floor) * score ** 1.5
+  // Bonuses only count once all requirements are met, so 80 is the ceiling until then.
+  const allMet = req.every((c) => c.pass)
+  const extra = allMet && bonus.length ? (bonus.filter((c) => c.pass).length / bonus.length) * (100 - h.requiredMax) : 0
+  return clamp100(Math.min(allMet ? 100 : h.requiredMax, base + extra) - penalty)
 }
 
 /** Entrance(s) of the park facing the end of a side street. */
@@ -130,14 +147,7 @@ function enoch(snap: ParkSnapshot): RequestResult {
 }
 
 // ---------------------------------------------------------------------------
-// Adam — student
-
-/**
- * ≈ 1.2 × the 303 m straight line between the Greenspire Ave entrance and the Bur Oak Ave
- * entrance opposite the school. Today's best path route is 390 m. The straight line crosses a
- * soccer field (paths can't be built through it), so the target allows a detour around it.
- */
-export const ADAM_TARGET_M = 365
+// Adam — student (route helper used by his walking routine)
 
 /** Best path-only route from the Greenspire Ave entrance to the Bur Oak Ave entrance facing the school. */
 export function adamRoute(snap: ParkSnapshot) {
@@ -159,55 +169,9 @@ export function adamRoute(snap: ParkSnapshot) {
   return { from: from[0], to: toCandidates[0], schoolPt, best }
 }
 
-function adam(snap: ParkSnapshot): RequestResult {
-  const { from, to, best } = adamRoute(snap)
-  const notes: string[] = []
-  if (!from) notes.push('There is no park entrance at Greenspire Ave. A path has to reach the park edge there.')
-  const straight = from && to ? dist(from.point, to.point) : 0
-  const criteria: Criterion[] = [
-    {
-      label: 'Path route Greenspire Ave → Bur Oak Ave (facing the school)',
-      value: best ? 'Connected' : 'Not connected',
-      target: 'Connected',
-      pass: !!best,
-      progress: best ? 1 : 0,
-    },
-    {
-      label: 'Route distance',
-      value: best ? fmt(best.lengthM, 'm') : '—',
-      target: `≤ ${fmt(ADAM_TARGET_M, 'm')}`,
-      pass: !!best && best.lengthM <= ADAM_TARGET_M,
-      progress: best ? clamp01(ADAM_TARGET_M / best.lengthM) : 0,
-    },
-  ]
-  if (straight) notes.push(`Straight-line distance between the two entrances: ${fmt(straight, 'm')}.`)
-  notes.push('Only paths count (no shortcuts across the grass).')
-  return {
-    id: 'adam',
-    citizenId: 'adam',
-    name: 'Adam',
-    role: 'Student',
-    icon: '🎒',
-    text: 'I walk from Greenspire Ave to Bur Oak Secondary School every day. I need a fast path through the park.',
-    satisfied: criteria.every((c) => c.pass),
-    happiness: happinessOf(criteria),
-    criteria,
-    voice: voiceOf(
-      criteria,
-      [
-        "There's no path that gets me from Greenspire to school. I end up trudging through the wet grass.",
-        'The paths wind all over the place. I keep being late for first period!',
-      ],
-      'I get to school in no time now. Best shortcut ever!',
-    ),
-    notes,
-  }
-}
-
 // ---------------------------------------------------------------------------
-// Bob — the elderly
+// Bob — the elderly (bench helper used by his walking routine)
 
-export const BOB_MAX_LAND_LOSS_M2 = 250
 export const BOB_HOME_STREET = 'Herbert Calbert Drive'
 
 /** Cells of the largest connected piece of paved, step-free path: the park's main accessible network. */
@@ -251,61 +215,10 @@ export function bobBenches(snap: ParkSnapshot) {
   return { home, connected, benches }
 }
 
-function bob(snap: ParkSnapshot, baseline: Baseline): RequestResult {
-  const land = landUse(snap)
-  const lost = Math.max(0, baseline.land.greenM2 - land.greenM2)
-  const { home, connected, benches } = bobBenches(snap)
-  const shaded = benches.filter((b) => b.shaded).length
-  const criteria: Criterion[] = [
-    {
-      label: `Accessible path from ${BOB_HOME_STREET} into the park's path network`,
-      value: !home ? 'No entrance' : connected ? 'Connected' : 'Not connected',
-      target: 'Connected',
-      pass: connected,
-      progress: connected ? 1 : 0,
-    },
-    {
-      label: 'Unused land removed',
-      value: fmt(lost, 'm²'),
-      target: `≤ ${fmt(BOB_MAX_LAND_LOSS_M2, 'm²')}`,
-      pass: lost <= BOB_MAX_LAND_LOSS_M2,
-      progress: clamp01(BOB_MAX_LAND_LOSS_M2 / Math.max(1, lost)),
-    },
-    { label: 'Benches on accessible paths', value: String(benches.length), target: '≥ 10', pass: benches.length >= 10, bonus: true, progress: clamp01(benches.length / 10) },
-    { label: 'Shaded benches', value: String(shaded), target: '≥ 3', pass: shaded >= 3, bonus: true, progress: clamp01(shaded / 3) },
-  ]
-  return {
-    id: 'bob',
-    citizenId: 'bob',
-    name: 'Bob',
-    role: 'Senior',
-    icon: '🧓',
-    text: 'I use a walker. I need a smooth, step-free path to a bench, and please don’t pave over the open land.',
-    satisfied: criteria.every((c) => c.bonus || c.pass),
-    happiness: happinessOf(criteria),
-    criteria,
-    voice: voiceOf(
-      criteria,
-      [
-        `From ${BOB_HOME_STREET} I can't get onto the good paths with my walker. The ground is too rough.`,
-        "You're paving over the open land. Please leave the park some room.",
-        'A few more benches along the smooth paths would help my knees.',
-        'Somewhere to sit in the shade would be lovely on hot days.',
-      ],
-      'I can get around the park on my own again. Thank you, young one.',
-    ),
-    notes: [
-      'Unused land = ground with nothing built on it (lawn, woods, planted areas). Paths, courts and plazas use it up; demolishing them gives it back.',
-      'Accessible = paved and step-free. OSM paths with no surface tag are counted as paved; the gravel path does not count.',
-    ],
-  }
-}
-
 // ---------------------------------------------------------------------------
-// Colgne — the parent
+// Colgne — the parent (route helper used by her walking routine)
 
 export const COLGNE_HOME_STREET = 'Hyacinth Street'
-export const COLGNE_MAX_TRAFFIC_M = 10
 
 /** Colgne's walk to the nearest playground on paths, choosing the route that avoids traffic. */
 export function colgneRoute(snap: ParkSnapshot) {
@@ -322,95 +235,141 @@ export function colgneRoute(snap: ParkSnapshot) {
   return { home, best: best as { playground: number; points: Vec2[]; lengthM: number; trafficM: number } | null }
 }
 
-function colgne(snap: ParkSnapshot): RequestResult {
-  const { home, best } = colgneRoute(snap)
-  const network = pathNextToTraffic(snap)
-  const criteria: Criterion[] = [
-    {
-      label: `Path from ${COLGNE_HOME_STREET} to a playground`,
-      value: !home ? 'No entrance' : best ? `${fmt(best.lengthM, 'm')} walk` : 'Not connected',
-      target: 'Connected',
-      pass: !!best,
-      progress: best ? 1 : 0,
-    },
-    {
-      label: 'Her route beside traffic',
-      value: best ? fmt(best.trafficM, 'm') : '—',
-      target: `≤ ${fmt(COLGNE_MAX_TRAFFIC_M, 'm')}`,
-      pass: !!best && best.trafficM <= COLGNE_MAX_TRAFFIC_M,
-      progress: best ? clamp01(COLGNE_MAX_TRAFFIC_M / Math.max(1, best.trafficM)) : 0,
-    },
-  ]
-  // Every metre of park path beside traffic worries her a little.
-  const penalty = Math.min(30, network.unsafeM / 20)
+// ---------------------------------------------------------------------------
+// Construction jobs: Adam, Bob, Colgne and Dylan each ask for something to be built or removed.
+
+/** Facility blocks of one type the player has built. */
+const builtCount = (snap: ParkSnapshot, type: FacilityType) => snap.blocks.filter((b) => b.shape.kind === 'facility' && b.shape.type === type).length
+/** Ground painted with one area type (m², as claimed when built). */
+const paintedM2 = (snap: ParkSnapshot, type: AreaType) => snap.blocks.reduce((a, b) => a + (b.shape.kind === 'area' && b.shape.type === type ? b.cells.length : 0), 0)
+/** Courts or fields of one kind that were in the park at the start and have been demolished. */
+const demolished = (snap: ParkSnapshot, baseline: Baseline, kind: Facility['kind']) => {
+  const now = new Set(snap.facilities.map((f) => f.id))
+  return baseline.facilities.filter((f) => f.kind === kind && !now.has(f.id)).length
+}
+
+const buildJob = (label: string, n: number, need = 1, bonus = false): Criterion => ({
+  label,
+  value: `${n} built`,
+  target: `≥ ${need}`,
+  pass: n >= need,
+  bonus,
+  progress: clamp01(n / need),
+})
+const areaJob = (label: string, m2: number, need: number, bonus = false): Criterion => ({
+  label,
+  value: fmt(m2, 'm²'),
+  target: `≥ ${fmt(need, 'm²')}`,
+  pass: m2 >= need,
+  bonus,
+  progress: clamp01(m2 / need),
+})
+
+/** Green space coverage as a criterion: the park's existing greenery counts from the start. */
+function greenJob(snap: ParkSnapshot, label: string, target = ENOCH_TARGETS.greenShare): Criterion {
+  const land = landUse(snap)
+  const g = land.parkM2 ? land.greenM2 / land.parkM2 : 0
+  return { label, value: `${(g * 100).toFixed(1)}%`, target: `≥ ${Math.round(target * 100)}%`, pass: g >= target, progress: clamp01(g / target) }
+}
+
+function job(
+  base: Pick<RequestResult, 'id' | 'name' | 'role' | 'icon' | 'text'>,
+  criteria: Criterion[],
+  hints: string[],
+  praise: string,
+  notes: string[] = [],
+): RequestResult {
   return {
-    id: 'colgne',
-    citizenId: 'colgne',
-    name: 'Colgne',
-    role: 'Parent',
-    icon: '👩‍👧',
-    text: 'I bring my daughter to the playground. Our path must keep away from cars: paths right next to roads and parking make me nervous.',
-    satisfied: criteria.every((c) => c.pass),
-    happiness: happinessOf(criteria, penalty),
+    ...base,
+    citizenId: base.id,
+    satisfied: criteria.every((c) => c.bonus || c.pass),
+    happiness: happinessOf(criteria),
     criteria,
-    voice: voiceOf(
-      criteria,
-      [
-        "There isn't a proper path from our street to the playground.",
-        'Our walk to the playground runs right beside the cars. It scares me with a little one.',
-      ],
-      'We walk to the playground without going near a single car. I can relax!',
-    ),
-    notes: [
-      `Beside traffic = within ${12} m of a street centreline, or ${3} m of a service road or parking lot. Park-wide: ${fmt(network.unsafeM, 'm')} of ${fmt(network.totalM, 'm')} of path (−${penalty.toFixed(0)} happiness).`,
-    ],
+    voice: voiceOf(criteria, hints, praise),
+    notes,
   }
 }
 
-// ---------------------------------------------------------------------------
-// Dylan — dog walker
+function adam(snap: ParkSnapshot): RequestResult {
+  return job(
+    { id: 'adam', name: 'Adam', role: 'Student', icon: '🎒', text: 'My friends and I need somewhere to play after school: a new basketball court and an outdoor gym.' },
+    [buildJob('New basketball court', builtCount(snap, 'basketball_court')), buildJob('Outdoor fitness area', builtCount(snap, 'fitness_area')), buildJob('Picnic area to hang out', builtCount(snap, 'picnic_area'), 1, true)],
+    ['The courts are always full after school. We need another basketball court.', "There's nowhere to do pull-ups. An outdoor gym would be awesome.", 'Somewhere with tables to hang out after a game would be nice.'],
+    'New court, new gym. Best park in Markham!',
+    ['Build these with the Facilities tab.'],
+  )
+}
 
-export const DYLAN_TARGET_M = 5000
+export const BOB_FLOWER_M2 = 300
 
-function dylan(snap: ParkSnapshot): RequestResult {
-  const { shadedM, totalM } = shadedPathLength(snap)
-  const criteria: Criterion[] = [
-    {
-      label: 'Path under shade',
-      value: fmt(shadedM / 1000, 'km', 2),
-      target: `≥ ${fmt(DYLAN_TARGET_M / 1000, 'km', 0)}`,
-      pass: shadedM >= DYLAN_TARGET_M,
-      progress: clamp01(shadedM / DYLAN_TARGET_M),
-    },
-  ]
-  return {
-    id: 'dylan',
-    citizenId: 'dylan',
-    name: 'Dylan',
-    role: 'Dog walker',
-    icon: '🐕',
-    text: 'My dog and I walk for an hour every day. I want long paths with trees along them, so we stay in the shade.',
-    satisfied: criteria.every((c) => c.pass),
-    happiness: happinessOf(criteria),
-    criteria,
-    voice: voiceOf(
-      criteria,
-      [
-        shadedM < DYLAN_TARGET_M * 0.3
-          ? 'There’s hardly any shade on the paths. My dog is panting after ten minutes.'
-          : 'It’s getting shadier, but our walks are still too short and too sunny.',
-      ],
-      'Long shady walks every day. My dog loves it here!',
-    ),
-    notes: [`Shaded = a tree canopy within 1 m of the path. The park has ${fmt(totalM / 1000, 'km', 2)} of path in total.`],
+function bob(snap: ParkSnapshot): RequestResult {
+  return job(
+    { id: 'bob', name: 'Bob', role: 'Senior', icon: '🧓', text: 'I’d love a plaza where the neighbours can meet, with a flower garden to look at.' },
+    [
+      buildJob('Community plaza', builtCount(snap, 'community_plaza')),
+      areaJob('Flower garden', paintedM2(snap, 'flower_garden'), BOB_FLOWER_M2),
+      greenJob(snap, 'Green space coverage'),
+      areaJob('Picnic lawn', paintedM2(snap, 'picnic_lawn'), 200, true),
+    ],
+    ['There’s no square where us old folks can sit together and chat.', 'A proper flower garden would brighten my mornings.', 'The park is losing its green. I liked it leafy.', 'A lawn for family picnics would bring the grandchildren round.'],
+    'A plaza and flowers! I come here every morning now.',
+    ['Paint areas with the Areas tab (brush or polygon).'],
+  )
+}
+
+export const COLGNE_PICNIC_M2 = 400
+
+/** Playground sites: OSM maps each site as several touching polygons, so polygons within 60 m count as one. */
+function playgroundSites(snap: ParkSnapshot): number {
+  const sites: Vec2[] = []
+  for (const pg of snap.geo.playgrounds) {
+    const c = ringCentroid(pg.ring)
+    if (!sites.some((q) => dist(q, c) < 60)) sites.push(c)
   }
+  return sites.length
+}
+
+function colgne(snap: ParkSnapshot): RequestResult {
+  return job(
+    { id: 'colgne', name: 'Colgne', role: 'Parent', icon: '👩‍👧', text: 'The playgrounds are crowded. Please build a new one, with a picnic lawn beside it for the parents.' },
+    [
+      (() => {
+        // The two playgrounds already in the park count from the start, so she begins partly happy.
+        const n = playgroundSites(snap)
+        return { label: 'Existing playgrounds', value: `${n}`, target: '≥ 2', pass: n >= 2, progress: clamp01(n / 2) }
+      })(),
+      buildJob('New playground', builtCount(snap, 'playground')),
+      areaJob('Picnic lawn', paintedM2(snap, 'picnic_lawn'), COLGNE_PICNIC_M2),
+      buildJob('Picnic area with a shelter', builtCount(snap, 'picnic_area'), 1, true),
+    ],
+    ['We loved the old playgrounds. Please don’t take them away.', 'My daughter waits ages for the swings. We need another playground.', 'There’s nowhere for us parents to sit on a blanket while the kids play.', 'A shelter with tables would save us when it rains.'],
+    'A brand new playground and a lawn to relax on. Thank you!',
+  )
+}
+
+export const DYLAN_GRASS_M2 = 600
+
+function dylan(snap: ParkSnapshot, baseline: Baseline): RequestResult {
+  const removed = demolished(snap, baseline, 'tennis_court')
+  return job(
+    { id: 'dylan', name: 'Dylan', role: 'Dog walker', icon: '🐕', text: 'Hardly anyone plays on the tennis courts. Take one out and give the dogs a grassy run, with some wild habitat around it.' },
+    [
+      { label: 'Tennis court removed', value: `${removed} removed`, target: '≥ 1', pass: removed >= 1, progress: clamp01(removed) },
+      areaJob('Grassland dog run', paintedM2(snap, 'grassland'), DYLAN_GRASS_M2),
+      greenJob(snap, 'Green space for walks'),
+      areaJob('Biodiversity habitat', paintedM2(snap, 'habitat'), 300, true),
+    ],
+    ['Those empty tennis courts take up so much space. My dog could run there!', 'We need a big grassy patch where dogs can stretch their legs.', 'Keep the park green. That’s where we walk every day.', 'Some wild planting would keep the birds and butterflies around.'],
+    'An off-leash run! My dog has never been so happy.',
+    ['Remove the court with the Remove tab, then paint grassland where it was.'],
+  )
 }
 
 /** All requests, Enoch first. */
 export function evaluateRequests(snap: ParkSnapshot, baseline: Baseline): RequestResult[] {
-  return [enoch(snap), adam(snap), bob(snap, baseline), colgne(snap), dylan(snap)]
+  return [enoch(snap), adam(snap), bob(snap), colgne(snap), dylan(snap, baseline)]
 }
 
 export function makeBaseline(snap: ParkSnapshot): Baseline {
-  return { land: landUse(snap) }
+  return { land: landUse(snap), facilities: snap.facilities.map((f) => ({ id: f.id, kind: f.kind })) }
 }

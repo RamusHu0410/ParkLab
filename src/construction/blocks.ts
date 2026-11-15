@@ -1,6 +1,7 @@
 import { dist, distToPolyline, pointAlong, pointInRing, polylineLength, seededRandom, type Ring, type Vec2 } from '../utils/geometry2d'
 import { catalogEntry } from './catalog'
 import { type Facility, facilityFixtures, facilityRing } from './facilities'
+import type { Violation } from './rules'
 import type { PlacedItem } from './types'
 
 export type PathType = 'walking_trail' | 'accessible_path' | 'jogging_trail'
@@ -29,6 +30,8 @@ export interface ConstructionBlock {
   displaced: PlacedItem[]
   /** Court rendered by ParkWorld (basketball court only). */
   facility?: Facility
+  /** Siting rules it broke when it was built; shown as a "!" marker. */
+  violations?: Violation[]
 }
 
 export const PATH_TYPES: Record<PathType, { label: string; color: string; edge: string; defaultWidth: number }> = {

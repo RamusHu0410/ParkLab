@@ -108,7 +108,8 @@ export const useEditorStore = create<EditorState>()((set, get) => ({
     if (!draft || !fixed) return
     const r = park.buildBlock(draft)
     if (r?.blockId) {
-      set({ ...cleared, message: { tone: 'ok', text: `Built ${blockLabel(draft).toLowerCase()} for ${money(r.cost)}.` } })
+      const broken = r.violations.length ? ` It breaks ${r.violations.length === 1 ? 'a siting rule' : `${r.violations.length} siting rules`} and is marked with "!".` : ''
+      set({ ...cleared, message: { tone: 'ok', text: `Built ${blockLabel(draft).toLowerCase()} for ${money(r.cost)}.${broken}` } })
       // Keep a facility preview under the cursor so the next one can be placed straight away.
       if (mode === 'facility') set({ draft: null })
     } else set({ plan: r, message: { tone: 'error', text: r?.reasons[0] ?? 'Cannot build here.' } })

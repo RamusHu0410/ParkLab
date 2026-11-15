@@ -23,9 +23,9 @@ interface CitizenState {
   evaluating: boolean
   /** Moves the camera to a citizen (set by the map). */
   focusCitizen: (id: string) => void
-  /** Help mode: show each request's exact requirements and how they're measured. */
-  helpOpen: boolean
-  toggleHelp: () => void
+  /** Hints on: show each request's exact requirements and how they're measured. */
+  showHints: boolean
+  toggleHints: () => void
   setRequests: (requests: RequestResult[]) => void
   setCitizens: (citizens: CitizenStatus[]) => void
   setEvaluating: (v: boolean) => void
@@ -39,8 +39,8 @@ export const useCitizenStore = create<CitizenState>()((set) => ({
   citizens: [],
   evaluating: false,
   focusCitizen: () => {},
-  helpOpen: false,
-  toggleHelp: () => set((s) => ({ helpOpen: !s.helpOpen })),
+  showHints: false,
+  toggleHints: () => set((s) => ({ showHints: !s.showHints })),
   setRequests: (requests) => set({ requests, evaluating: false }),
   setCitizens: (citizens) => set({ citizens }),
   setEvaluating: (evaluating) => set({ evaluating }),

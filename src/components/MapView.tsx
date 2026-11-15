@@ -28,6 +28,8 @@ import {
   PROPOSED_SOURCE_ID,
 } from '../geography/parkLayers'
 import { facilityMarkers } from '../scene/facilityMarkers'
+import { violationMarkers } from '../scene/violationMarkers'
+import { CLEARANCE_M } from '../construction/rules'
 import { MarkerOverlay } from '../scene/markerOverlay'
 import { ParkWorld } from '../scene/three/ParkWorld'
 import { createThreeLayer } from '../scene/three/threeLayer'
@@ -183,9 +185,13 @@ export function MapView() {
           woodlot: geo.woodlot,
           valley: geo.valley,
           streams: geo.streams,
-          existing: [...geo.playgrounds, ...geo.parking]
-            .map((a) => ({ id: `area-${a.sourceId}`, ring: a.ring }))
-            .concat(state.facilities.filter((f) => !f.id.startsWith('block-')).map((f) => ({ id: f.id, ring: facilityRing(f) }))),
+          existing: [
+            ...geo.playgrounds.map((a) => ({ id: `area-${a.sourceId}`, ring: a.ring, clearance: { metres: CLEARANCE_M.playground, what: 'playground fall zone' } })),
+            ...geo.parking.map((a) => ({ id: `area-${a.sourceId}`, ring: a.ring })),
+            ...state.facilities
+              .filter((f) => !f.id.startsWith('block-'))
+              .map((f) => ({ id: f.id, ring: facilityRing(f), clearance: { metres: CLEARANCE_M.sports, what: 'sports run-off area' } })),
+          ],
         })
         PREVIEW_LAYERS.forEach((l) => map.addLayer(l, BEFORE_3D_BUILDINGS))
         detachEditor = attachConstructionEditor(map, geo)
@@ -216,8 +222,11 @@ export function MapView() {
           overlay.setMarkers('facilities', facilityMarkers(geo, s.facilities, s.placedItems, s.facilitiesInUse))
         }
         syncPark()
+        // "!" over blocks that break a siting rule.
+        overlay.setMarkers('violations', violationMarkers(useParkStore.getState().blocks))
         unsubscribeItems = useParkStore.subscribe((s, prev) => {
           if (s.placedItems !== prev.placedItems || s.facilities !== prev.facilities || s.facilitiesInUse !== prev.facilitiesInUse) syncPark(s)
+          if (s.blocks !== prev.blocks) overlay.setMarkers('violations', violationMarkers(s.blocks))
         })
         stopCitizens = runCitizens(map, w, geo)
 

@@ -15,6 +15,7 @@ import { LEVEL } from '../construction/level'
 import { describeTarget, type EditorMode, useEditorStore } from '../store/editorStore'
 import { useParkStore } from '../store/parkStore'
 import { AreaIcon, FacilityIcon, ModeIcon, PathIcon } from './buildIcons'
+import { RULES } from '../construction/rules'
 
 const money = (n: number) => `$${Math.round(n).toLocaleString()}`
 const entries = <K extends string, V>(o: Record<K, V>) => Object.entries(o) as [K, V][]
@@ -74,6 +75,7 @@ export function ConstructionPanel() {
   return (
     <div className="build-dock">
       <div className="build-dock__bar">
+        <h2 className="build-dock__title">Construction</h2>
         <div className="build-dock__tabs" role="tablist">
           {MODES.map((m) => (
             <button key={m.mode} role="tab" aria-selected={e.mode === m.mode} className={e.mode === m.mode ? 'is-active' : ''} onClick={() => e.setMode(m.mode)}>
@@ -186,7 +188,7 @@ export function ConstructionPanel() {
               </div>
             </div>
           ) : plan && e.draft ? (
-            <div className={`build-dock__card ${plan.ok ? 'is-ok' : 'is-bad'}`}>
+            <div className={`build-dock__card ${!plan.ok ? 'is-bad' : plan.violations.length ? 'is-warn' : 'is-ok'}`}>
               {shapeIcon(e.draft)}
               <div>
                 <div>
@@ -206,12 +208,20 @@ export function ConstructionPanel() {
                     ✗ {r}
                   </div>
                 ))}
+                {plan.violations.map((v) => (
+                  <div key={v.rule + v.message} className="build-dock__warn" title={RULES[v.rule].summary}>
+                    <span className="build-dock__warn-mark">!</span>
+                    <span>
+                      <strong>{RULES[v.rule].label}:</strong> {v.message}
+                    </span>
+                  </div>
+                ))}
                 {plan.notes.map((n) => (
                   <div key={n} className="build-dock__note">
                     {n}
                   </div>
                 ))}
-                {e.fixed && <ConfirmButtons ok={plan.ok} onConfirm={e.confirm} onCancel={e.cancel} confirmLabel={`Build for ${money(plan.cost)}`} />}
+                {e.fixed && <ConfirmButtons ok={plan.ok} onConfirm={e.confirm} onCancel={e.cancel} confirmLabel={`Build${plan.violations.length ? ' anyway' : ''} for ${money(plan.cost)}`} />}
               </div>
             </div>
           ) : (

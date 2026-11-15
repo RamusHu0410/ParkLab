@@ -237,7 +237,7 @@ export const useParkStore = create<ParkState>()((set, get) => {
       set((s) => ({ budget: s.budget - amount }))
       return true
     },
-    previewBlock: (shape) => (grid ? planPlacement(shape, { grid, items: get().placedItems, budget: get().budget }) : null),
+    previewBlock: (shape) => (grid ? planPlacement(shape, { grid, items: get().placedItems, budget: get().budget, blocks: get().blocks }) : null),
     buildBlock: (shape) => {
       const plan = get().previewBlock(shape)
       if (!plan || !plan.ok) return plan
@@ -250,6 +250,7 @@ export const useParkStore = create<ParkState>()((set, get) => {
         items: plan.items.map((it) => ({ ...it, id: newItemId() })),
         displaced: plan.displaced,
         facility: shape.kind === 'facility' && shape.type === 'basketball_court' ? basketballFacility(shape, id) : undefined,
+        violations: plan.violations,
       }
       if (!apply(block, plan.cost)) return { ...plan, ok: false, reasons: ['Not enough funds.'] }
       set((s) => ({ undoStack: [...s.undoStack, { op: 'build', block, amount: plan.cost }], redoStack: [] }))

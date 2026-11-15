@@ -16,6 +16,8 @@ const metresProp = (extra = 0): ExpressionSpecification => [
 ]
 const isPolygon: ExpressionSpecification = ['match', ['geometry-type'], ['Polygon', 'MultiPolygon'], true, false]
 const isLine: ExpressionSpecification = ['==', ['geometry-type'], 'LineString']
+/** Preview colour by placement state: ok, warn (breaks a siting rule but can be built) or bad. */
+const byState = (ok: string, warn: string, bad: string): ExpressionSpecification => ['match', ['get', 'state'], 'ok', ok, 'warn', warn, bad]
 const kind = (k: string): ExpressionSpecification => ['==', ['get', 'kind'], k]
 
 /** Built blocks; inserted below the basemap roads, above the park surfaces. */
@@ -54,14 +56,14 @@ export const PREVIEW_LAYERS: LayerSpecification[] = [
     type: 'fill',
     source: PREVIEW_SOURCE_ID,
     filter: isPolygon,
-    paint: { 'fill-color': ['case', ['get', 'valid'], '#2e7d32', '#d32f2f'], 'fill-opacity': 0.4 },
+    paint: { 'fill-color': byState('#2e7d32', '#f9a825', '#d32f2f'), 'fill-opacity': 0.4 },
   },
   {
     id: 'construction-preview-outline',
     type: 'line',
     source: PREVIEW_SOURCE_ID,
     filter: isPolygon,
-    paint: { 'line-color': ['case', ['get', 'valid'], '#1b5e20', '#b71c1c'], 'line-width': 2 },
+    paint: { 'line-color': byState('#1b5e20', '#e65100', '#b71c1c'), 'line-width': 2 },
   },
   {
     id: 'construction-preview-line',
@@ -69,7 +71,7 @@ export const PREVIEW_LAYERS: LayerSpecification[] = [
     source: PREVIEW_SOURCE_ID,
     filter: isLine,
     layout: { 'line-cap': 'round', 'line-join': 'round' },
-    paint: { 'line-color': ['case', ['get', 'valid'], '#2e7d32', '#d32f2f'], 'line-opacity': 0.5, 'line-width': metresProp() },
+    paint: { 'line-color': byState('#2e7d32', '#f9a825', '#d32f2f'), 'line-opacity': 0.5, 'line-width': metresProp() },
   },
   {
     id: 'construction-preview-points',

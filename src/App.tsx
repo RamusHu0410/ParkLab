@@ -1,9 +1,10 @@
 import { ConstructionPanel } from './components/ConstructionPanel'
 import { DevPanel } from './components/DevPanel'
-import { HelpButton } from './components/HelpButton'
+import { HintButton } from './components/HintButton'
 import { MetersPanel } from './components/MetersPanel'
 import { MapView } from './components/MapView'
 import { RequestPanel } from './components/RequestPanel'
+import { TopBar } from './components/TopBar'
 import { ParkScene } from './scene/ParkScene'
 import { useMapStore } from './store/mapStore'
 
@@ -23,11 +24,14 @@ export default function App() {
   }
   return (
     <div className={`app app--editor ${introActive ? 'is-intro' : ''}`}>
+      <TopBar />
       <div className="map-row">
         <div className="map-area">
           <MapView />
-          <MetersPanel />
-          <HelpButton />
+          <div className="map-hud">
+            <MetersPanel />
+            <HintButton />
+          </div>
         </div>
         <RequestPanel />
       </div>

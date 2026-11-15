@@ -49,9 +49,9 @@ function CitizenLine({ c }: { c: CitizenStatus | undefined }) {
   )
 }
 
-function RequestCard({ r, citizen, groupSize }: { r: RequestResult; citizen: CitizenStatus | undefined; groupSize: number }) {
+function RequestCard({ r, citizen }: { r: RequestResult; citizen: CitizenStatus | undefined }) {
   const focus = useCitizenStore((s) => s.focusCitizen)
-  const help = useCitizenStore((s) => s.helpOpen)
+  const help = useCitizenStore((s) => s.showHints)
   return (
     <article className={`request-card ${r.satisfied ? 'request-card--done' : ''}`}>
       <header className="request-card__head">
@@ -59,16 +59,12 @@ function RequestCard({ r, citizen, groupSize }: { r: RequestResult; citizen: Cit
           <Portrait id={r.citizenId} fallback={r.icon} />
           <span>
             <strong>{r.name}</strong>
-            <small>
-              {r.role}
-              {groupSize > 1 && ` · speaks for ${groupSize} people`}
-            </small>
+            <small>{r.role}</small>
           </span>
         </button>
         <span className={`badge ${r.satisfied ? 'badge--done' : 'badge--open'}`}>{r.satisfied ? '✓ Satisfied' : 'Open'}</span>
       </header>
       <HappinessBar value={r.happiness} />
-      <p className="request-card__text">“{r.text}”</p>
       <div className={`speech ${r.satisfied ? 'speech--happy' : ''}`}>
         {r.voice.map((line) => (
           <p key={line}>{line}</p>
@@ -135,7 +131,7 @@ export function RequestPanel() {
       </header>
       <div className="request-panel__list">
         {requests.map((r) => (
-          <RequestCard key={r.id} r={r} citizen={citizens.find((c) => c.id === r.citizenId)} groupSize={citizens.filter((c) => c.group === r.id).length} />
+          <RequestCard key={r.id} r={r} citizen={citizens.find((c) => c.id === r.citizenId)} />
         ))}
         {others.length > 0 && (
           <details className="also-here">

@@ -7,11 +7,11 @@ import { generateInitialLayout } from '../construction/initialLayout'
 import type { PlacedItem } from '../construction/types'
 import { parseParkGeometry } from '../geography/parkGeometry'
 import { Cell } from '../simulation/navGrid'
-import { buildSnapshot, landUse, routeDangerM } from '../simulation/parkMetrics'
-import { findRoute, reachable } from '../simulation/pathfinding'
+import { buildSnapshot, routeDangerM } from '../simulation/parkMetrics'
+import { findRoute } from '../simulation/pathfinding'
 import { dist, type Vec2 } from '../utils/geometry2d'
 import { CitizenSim, type CitizenSimHost } from './citizenSim'
-import { adamRoute, BOB_MAX_LAND_LOSS_M2, colgneRoute, DYLAN_TARGET_M, entrancesFacingStreet, evaluateRequests, makeBaseline } from './requests'
+import { adamRoute, BOB_FLOWER_M2, colgneRoute, COLGNE_PICNIC_M2, DYLAN_GRASS_M2, entrancesFacingStreet, evaluateRequests, makeBaseline } from './requests'
 
 const geo = parseParkGeometry(JSON.parse(fs.readFileSync(path.resolve(__dirname, '../../public/maps/wismer-park.geojson'), 'utf8')))
 const facilities = planFacilities(geo)
@@ -19,11 +19,6 @@ const items: PlacedItem[] = generateInitialLayout(geo, facilities).map((it, i) =
 const snap = buildSnapshot(geo, items, facilities, [])
 const baseline = makeBaseline(snap)
 const results = () => Object.fromEntries(evaluateRequests(snap, baseline).map((r) => [r.id, r]))
-
-/** A built path block (only the fields the simulation reads). */
-function pathBlock(id: string, line: Vec2[], type: 'accessible_path' | 'walking_trail' = 'accessible_path', width = 3): ConstructionBlock {
-  return { id, shape: { kind: 'path', type, line, width }, cost: 0, cells: [], items: [], displaced: [] }
-}
 
 /** Cell types along a route, sampled between cell borders (a diagonal step touches its neighbours only at a corner). */
 const cellsAlong = (pts: Vec2[]) => {
@@ -91,52 +86,59 @@ describe('citizen requests on the real park', () => {
       const required = r.criteria.filter((c) => !c.bonus)
       expect(r.satisfied).toBe(required.every((c) => c.pass))
     }
+    // Nothing is built yet, so none of the construction jobs is done.
     const r = results()
-    // Today's park: Adam's route is too long, Colgne's walk runs along Castlemore, Dylan has almost no shade.
-    expect(r.adam.satisfied).toBe(false)
-    expect(r.colgne.satisfied).toBe(false)
-    expect(r.dylan.satisfied).toBe(false)
-    expect(r.dylan.criteria[0].pass).toBe(false)
+    for (const id of ['adam', 'bob', 'colgne', 'dylan']) expect(r[id].satisfied).toBe(false)
+    // Everyone starts between 45 and 60.
+    for (const x of Object.values(r)) expect(x.happiness).toBeGreaterThanOrEqual(45), expect(x.happiness).toBeLessThanOrEqual(60)
   })
 
-  it("satisfies Adam once a direct path is built, and Bob once his entrance joins the network", () => {
-    const { from, to } = adamRoute(snap)
-    const adamPath = pathBlock('b1', [from!.point, to!.point])
-    const bobHome = entrancesFacingStreet(snap, 'Herbert Calbert Drive')[0].point
-    // Bob's entrance: a straight accessible link to the nearest point of the main network.
-    const main = reachable(snap.grid, snap.entrances[0].point, 'accessible')
-    const k = snap.grid.nearest(bobHome, () => true, 0)
-    let best = -1
-    for (let q = 0; q < main.length; q++) if (main[q] && (best < 0 || dist(snap.grid.center(q), bobHome) < dist(snap.grid.center(best), bobHome))) best = q
-    expect(k).toBeGreaterThanOrEqual(0)
-    const link: Vec2[] = [bobHome, snap.grid.center(best)]
-    const built = buildSnapshot(geo, items, facilities, [adamPath, pathBlock('b2', link)])
+  it('has no requests about connecting paths or shade', () => {
+    const labels = evaluateRequests(snap, baseline).flatMap((r) => r.criteria.map((c) => c.label.toLowerCase()))
+    expect(labels.some((l) => /shade|route|path|connected/.test(l))).toBe(false)
+  })
+
+  it('completes the construction jobs once the blocks are built', () => {
+    const cells = (n: number) => Array.from({ length: n }, (_, i) => i)
+    const facility = (id: string, type: 'basketball_court' | 'fitness_area' | 'community_plaza' | 'playground'): ConstructionBlock => ({
+      id,
+      shape: { kind: 'facility', type, center: [0, 0], angle: 0, length: 10, width: 10 },
+      cost: 0,
+      cells: [],
+      items: [],
+      displaced: [],
+    })
+    const area = (id: string, type: 'flower_garden' | 'picnic_lawn' | 'grassland', m2: number): ConstructionBlock => ({
+      id,
+      shape: { kind: 'area', type, mode: 'polygon', ring: [[0, 0], [1, 0], [1, 1]] },
+      cost: 0,
+      cells: cells(m2),
+      items: [],
+      displaced: [],
+    })
+    const blocks = [
+      facility('f1', 'basketball_court'),
+      facility('f2', 'fitness_area'),
+      facility('f3', 'community_plaza'),
+      facility('f4', 'playground'),
+      area('a1', 'flower_garden', BOB_FLOWER_M2),
+      area('a2', 'picnic_lawn', COLGNE_PICNIC_M2),
+      area('a3', 'grassland', DYLAN_GRASS_M2),
+    ]
+    const tennis = facilities.find((f) => f.kind === 'tennis_court')!
+    const built = buildSnapshot(geo, items, facilities.filter((f) => f.id !== tennis.id), blocks)
     const r = Object.fromEntries(evaluateRequests(built, baseline).map((x) => [x.id, x]))
-    expect(r.adam.satisfied).toBe(true)
-    expect(r.bob.criteria[0].pass).toBe(true)
-  })
-
-  it('fails Bob when more than 250 m² of unused land is built over', () => {
-    const { from, to } = adamRoute(snap)
-    // A 6 m wide path across the lawn uses well over 250 m².
-    const wide = buildSnapshot(geo, items, facilities, [pathBlock('w', [from!.point, to!.point], 'accessible_path', 6)])
-    const lost = baseline.land.greenM2 - landUse(wide).greenM2
-    expect(lost).toBeGreaterThan(BOB_MAX_LAND_LOSS_M2)
-    const bob = evaluateRequests(wide, baseline).find((x) => x.id === 'bob')!
-    expect(bob.criteria.find((c) => c.label === 'Unused land removed')!.pass).toBe(false)
-    expect(bob.satisfied).toBe(false)
+    for (const id of ['adam', 'bob', 'colgne', 'dylan']) expect(r[id].satisfied).toBe(true)
+    // All requirements met but no bonuses: happiness stops at 80.
+    for (const id of ['adam', 'colgne', 'dylan']) expect(r[id].happiness).toBe(80)
+    // Bob's only bonus (a 200 m² picnic lawn) is met by Colgne's 400 m² lawn, so he goes above 80.
+    expect(r.bob.happiness).toBe(100)
   })
 
   it("measures Colgne's route beside traffic on the real route", () => {
     const { best } = colgneRoute(snap)
     expect(best).not.toBeNull()
     expect(routeDangerM(snap, best!.points)).toBe(best!.trafficM)
-    expect(best!.trafficM).toBeGreaterThan(10)
-  })
-
-  it("uses Dylan's 5 km target", () => {
-    expect(DYLAN_TARGET_M).toBe(5000)
-    expect(results().dylan.criteria[0].target).toContain('5 km')
   })
 })
 

@@ -236,7 +236,8 @@ export function attachConstructionEditor(map: MapLibreMap, geo: ParkGeometry): (
     const features: Feature[] = []
     if (s.draft) {
       const { geometry, w } = shapeGeometry(s.draft)
-      features.push({ type: 'Feature', properties: { valid: s.plan?.ok ?? false, w: w ?? 0 }, geometry })
+      const state = !s.plan?.ok ? 'bad' : s.plan.violations.length ? 'warn' : 'ok'
+      features.push({ type: 'Feature', properties: { state, w: w ?? 0 }, geometry })
     }
     for (const p of s.polygon) features.push({ type: 'Feature', properties: {}, geometry: { type: 'Point', coordinates: ll(p) } })
     for (const it of s.plan?.displaced ?? []) features.push({ type: 'Feature', properties: { displaced: true }, geometry: { type: 'Point', coordinates: ll([it.position[0], it.position[2]]) } })
@@ -247,7 +248,7 @@ export function attachConstructionEditor(map: MapLibreMap, geo: ParkGeometry): (
       if (it) features.push({ type: 'Feature', properties: { target: true }, geometry: { type: 'Point', coordinates: ll([it.position[0], it.position[2]]) } })
     } else if (target?.type === 'facility') {
       const f = park.facilities.find((x) => x.id === target.id)
-      if (f) features.push({ type: 'Feature', properties: { valid: false }, geometry: { type: 'Polygon', coordinates: [closed(facilityRing(f))] } })
+      if (f) features.push({ type: 'Feature', properties: { state: 'bad' }, geometry: { type: 'Polygon', coordinates: [closed(facilityRing(f))] } })
     }
     previewSource()?.setData({ type: 'FeatureCollection', features })
     const highlight = target?.type === 'block' ? target.id : ''

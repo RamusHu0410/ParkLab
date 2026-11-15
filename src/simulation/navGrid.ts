@@ -1,6 +1,7 @@
 import type { ConstructionBlock } from '../construction/blocks'
 import { catalogEntry } from '../construction/catalog'
 import { type Facility, facilityRing } from '../construction/facilities'
+import { gridFrame } from '../construction/parkGrid'
 import type { PlacedItem } from '../construction/types'
 import type { ParkGeometry } from '../geography/parkGeometry'
 import { bbox, distToSegment, pointInRing, type Ring, type Vec2 } from '../utils/geometry2d'
@@ -56,11 +57,11 @@ export class NavGrid {
   readonly surface: Uint8Array
 
   constructor({ geo, items, facilities, blocks = [], ownedCells, paths }: NavGridInput) {
-    const { min, max } = bbox(geo.outer)
-    this.x0 = Math.floor(min[0]) - 1
-    this.z0 = Math.floor(min[1]) - 1
-    this.w = Math.ceil(max[0]) + 1 - this.x0
-    this.h = Math.ceil(max[1]) + 1 - this.z0
+    const frame = gridFrame(geo.outer)
+    this.x0 = frame.x0
+    this.z0 = frame.z0
+    this.w = frame.w
+    this.h = frame.h
     this.cells = new Uint8Array(this.w * this.h)
     this.surface = new Uint8Array(this.w * this.h)
     const set = (k: number, cell: CellType, surface: number) => {

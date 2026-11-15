@@ -22,7 +22,7 @@ function samples(f: (typeof facilities)[number]): Vec2[] {
 
 describe('facility planning', () => {
   it('places every requested facility', () => {
-    expect(proposed.map((f) => f.kind).sort()).toEqual(['basketball_court', 'basketball_court', 'ice_rink', 'multi_sport_court', 'soccer_field', 'soccer_field'])
+    expect(proposed.map((f) => f.kind).sort()).toEqual(['ice_rink', 'multi_sport_court'])
   })
 
   it('keeps new facilities inside the park, off the woodlot/valley and existing facilities', () => {

@@ -47,10 +47,7 @@ interface ProposedSpec {
 export const PROPOSED_FACILITIES: ProposedSpec[] = [
   { kind: 'ice_rink', name: 'Synthetic ice rink', length: 40, width: 20, near: 'castlemore-mingay' },
   { kind: 'multi_sport_court', name: 'Multi-purpose sports court', length: 50, width: 30, near: 'burOak-mingay' },
-  { kind: 'soccer_field', name: 'Soccer field (7-a-side)', length: 50, width: 32, near: 'east-of-playgrounds' },
-  { kind: 'soccer_field', name: 'Soccer field (7-a-side)', length: 50, width: 32, near: 'east-of-playgrounds' },
-  { kind: 'basketball_court', name: 'Basketball court', length: 32, width: 19, near: 'east-of-playgrounds' },
-  { kind: 'basketball_court', name: 'Basketball court', length: 32, width: 19, near: 'east-of-playgrounds' },
+  // The two soccer fields and two basketball courts between the playgrounds and Mingay Ave were removed on request.
 ]
 
 /** Distance new facilities keep from existing facilities, the woodlot and the valley (m). */

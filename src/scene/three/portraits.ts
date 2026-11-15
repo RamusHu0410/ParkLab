@@ -1,5 +1,6 @@
 import {
   AnimationMixer,
+  Box3,
   DirectionalLight,
   HemisphereLight,
   type Material,
@@ -9,6 +10,7 @@ import {
   PerspectiveCamera,
   PropertyBinding,
   Scene,
+  type SkinnedMesh,
   SRGBColorSpace,
   Vector3,
   WebGLRenderer,
@@ -79,15 +81,40 @@ async function draw(look: Look): Promise<string> {
   scene.add(body)
   body.updateMatrixWorld(true)
 
-  // Frame the head bone; the models face +z, so the camera looks back along -z, slightly from the side.
-  const head = body.getObjectByName(PropertyBinding.sanitizeNodeName('head'))
-  const target = head ? head.getWorldPosition(new Vector3()).add(new Vector3(0, 0.06, 0)) : new Vector3(0, 1.3, 0)
-  const camera = new PerspectiveCamera(26, 1, 0.05, 10)
-  camera.position.copy(target).add(new Vector3(0.28, 0.06, 1.05))
-  camera.lookAt(target.clone().add(new Vector3(0, -0.08, 0)))
+  // Frame the head: the posed (skinned) vertices above the neck bone. The models face +z,
+  // so the camera looks back along -z from slightly to one side.
+  const head = headBox(body)
+  const target = head.getCenter(new Vector3())
+  const height = head.getSize(new Vector3()).y
+  const fov = 22
+  // Close-up: the head fills ~85% of the picture.
+  const distance = height / 0.85 / (2 * Math.tan(((fov / 2) * Math.PI) / 180))
+  const camera = new PerspectiveCamera(fov, 1, 0.05, 10)
+  camera.position.copy(target).add(new Vector3(distance * 0.16, distance * 0.04, distance))
+  camera.lookAt(target)
 
   renderer.render(scene, camera)
+
   const url = renderer.domElement.toDataURL('image/png')
   scene.clear()
   return url
+}
+
+/** World-space box of the posed head: skinned vertices more than 2 cm above the neck bone. */
+function headBox(body: Object3D): Box3 {
+  const box = new Box3()
+  const neck = body.getObjectByName(PropertyBinding.sanitizeNodeName('neck'))
+  const neckY = neck ? neck.getWorldPosition(new Vector3()).y + 0.02 : -Infinity
+  const v = new Vector3()
+  body.traverse((o) => {
+    const mesh = o as SkinnedMesh
+    if (!mesh.isSkinnedMesh) return
+    const pos = mesh.geometry.attributes.position
+    for (let i = 0; i < pos.count; i++) {
+      mesh.getVertexPosition(i, v).applyMatrix4(mesh.matrixWorld)
+      if (v.y > neckY) box.expandByPoint(v)
+    }
+  })
+  if (box.isEmpty()) box.set(new Vector3(-0.15, 1.25, -0.15), new Vector3(0.15, 1.57, 0.15))
+  return box
 }

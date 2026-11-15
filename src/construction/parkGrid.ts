@@ -1,4 +1,4 @@
-import { bbox, distToPolyline, pointInRing, type Ring, type Vec2 } from '../utils/geometry2d'
+import { bbox, distToPolyline, distToRingEdge, pointInRing, type Ring, type Vec2 } from '../utils/geometry2d'
 import { type BlockKind, type BlockShape, type ConstructionBlock, shapeBounds, shapeContains } from './blocks'
 
 /** Terrain flags of the base map, per cell. */
@@ -11,6 +11,25 @@ export const TERRAIN = {
   existing: 16,
 } as const
 
+/** Ground beyond the park boundary covered by the grid (m), so blocks may be built outside the park. */
+export const GRID_MARGIN_M = 50
+
+/** Cell layout shared by ParkGrid and the simulation NavGrid, so their indices match. */
+export function gridFrame(outer: Ring): { x0: number; z0: number; w: number; h: number } {
+  const { min, max } = bbox(outer)
+  const x0 = Math.floor(min[0]) - GRID_MARGIN_M
+  const z0 = Math.floor(min[1]) - GRID_MARGIN_M
+  return { x0, z0, w: Math.ceil(max[0]) + GRID_MARGIN_M - x0, h: Math.ceil(max[1]) + GRID_MARGIN_M - z0 }
+}
+
+/** A safety zone around a play or sports surface: the cells within `metres` outside its footprint. */
+export interface SafetyZone {
+  id: string
+  /** e.g. "playground fall zone". */
+  what: string
+  cells: Set<number>
+}
+
 const LAYER: Record<BlockKind, number> = { area: 1, path: 2, facility: 3 }
 const LAYER_KIND: (BlockKind | null)[] = [null, 'area', 'path', 'facility']
 
@@ -21,7 +40,7 @@ export interface GridTerrain {
   valley?: Ring
   streams?: Vec2[][]
   /** Footprints that new blocks may not overlap. Ids let a footprint be cleared when the player demolishes it. */
-  existing?: { id: string; ring: Ring }[]
+  existing?: { id: string; ring: Ring; clearance?: { metres: number; what: string } }[]
 }
 
 /** Half-width of the strip along a stream treated as water (m). */
@@ -48,13 +67,15 @@ export class ParkGrid {
   /** Cells of each existing footprint, by id. */
   private existingCells = new Map<string, number[]>()
   private removedExisting = new Set<string>()
+  /** Safety zones of existing playgrounds, courts and fields. */
+  private existingZones: SafetyZone[] = []
 
   constructor(t: GridTerrain) {
-    const { min, max } = bbox(t.outer)
-    this.x0 = Math.floor(min[0]) - 1
-    this.z0 = Math.floor(min[1]) - 1
-    this.w = Math.ceil(max[0]) + 1 - this.x0
-    this.h = Math.ceil(max[1]) + 1 - this.z0
+    const frame = gridFrame(t.outer)
+    this.x0 = frame.x0
+    this.z0 = frame.z0
+    this.w = frame.w
+    this.h = frame.h
     const n = this.w * this.h
     this.terrain = new Uint8Array(n)
     this.layer = new Uint8Array(n)
@@ -84,6 +105,27 @@ export class ParkGrid {
         this.terrain[idx] = f
       }
     }
+    for (const e of t.existing ?? []) {
+      if (e.clearance && e.ring.length > 2) this.existingZones.push({ id: e.id, what: e.clearance.what, cells: this.zoneCells(e.ring, e.clearance.metres) })
+    }
+  }
+
+  /** Cells whose centre lies outside `ring` but within `metres` of its edge. */
+  zoneCells(ring: Ring, metres: number): Set<number> {
+    const { min, max } = bbox(ring)
+    const out = new Set<number>()
+    for (let z = Math.floor(min[1] - metres) + 0.5; z <= max[1] + metres; z++) {
+      for (let x = Math.floor(min[0] - metres) + 0.5; x <= max[0] + metres; x++) {
+        const idx = this.indexAt([x, z])
+        if (idx >= 0 && !pointInRing([x, z], ring) && distToRingEdge([x, z], ring) <= metres) out.add(idx)
+      }
+    }
+    return out
+  }
+
+  /** Safety zones of existing features that are still standing. */
+  safetyZones(): SafetyZone[] {
+    return this.existingZones.filter((z) => !this.removedExisting.has(z.id))
   }
 
   /** Clears (or restores) the "existing" flag of a demolished footprint, so the ground becomes buildable. */
